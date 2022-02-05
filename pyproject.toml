@@ -9,6 +9,9 @@ python = "^3.8"
 torch = "^1.10.2"
 numpy = "^1.22.2"
 gym = "^0.21.0"
+tqdm = "^4.62.3"
+tensorboard = "^2.8.0"
+pyglet = "^1.5.21"
 
 [tool.poetry.dev-dependencies]
 

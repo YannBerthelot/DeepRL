@@ -1,3 +1,10 @@
 class Config:
     DEVICE = "CPU"
-    NN_ARCHITECTURE = [128, 128, 128]
+    NN_ARCHITECTURE = [64, 64, 64]
+    POLICY_LR = 5e-4
+    POLICY_MOMENTUM = 0.9
+    GAMMA = 0.99
+    NB_EPISODES_PER_EPOCH = 10
+    NB_EPOCH = 2000
+    NB_EPISODES_TEST = 20
+    MODEL_PATH = "models"

@@ -1,4 +1,3 @@
-from libcst import Not
 import numpy
 
 
@@ -14,10 +13,4 @@ class Agent:
         raise NotImplementedError
 
     def train(self):
-        raise NotImplementedError
-
-    def loss(self):
-        raise NotImplementedError
-
-    def save(self):
         raise NotImplementedError
