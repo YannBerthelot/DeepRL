@@ -3,6 +3,9 @@ import torch.nn as nn
 from typing import List
 import numpy as np
 
+# Read config
+from config import Config
+
 
 def get_network_from_architecture(
     input_shape, output_shape, architecture: List[int]
@@ -40,7 +43,7 @@ def get_network_from_architecture(
                 _output_shape = nb_neurons
                 layers.append(nn.Linear(_input_shape, _output_shape))
                 layers.append(nn.ReLU())
-                layers.append(nn.Dropout(0.01))
+                layers.append(nn.Dropout(Config.DROPOUT))
         _input_shape = architecture[-1]
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))

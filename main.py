@@ -2,8 +2,12 @@ import os
 import gym
 from REINFORCE import REINFORCE
 from config import Config
+from pyvirtualdisplay import Display
 
 if __name__ == "__main__":
+    display = Display(visible=0, size=(1400, 900))
+    display.start()
+
     # Init folder for model saves
     os.makedirs("models", exist_ok=True)
 
@@ -26,3 +30,5 @@ if __name__ == "__main__":
 
     # Evaluate and render the policy
     agent.test(env, nb_episodes=nb_episodes_test, render=True)
+
+    display.stop()

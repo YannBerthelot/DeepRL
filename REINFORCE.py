@@ -1,9 +1,12 @@
 # For type hinting only
+from textwrap import wrap
 from typing import List
 import gym
 
 # Base class for Agent
 from agent import Agent
+
+from utils import wrap_env
 
 # The network we create and the device to run it on
 from network import PolicyNetwork, device
@@ -239,6 +242,8 @@ class REINFORCE(Agent):
             nb_episodes (int): Number of test episodes
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
+
+        env = wrap_env(env)
 
         # Iterate over the episodes
         for episode in range(nb_episodes):

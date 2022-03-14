@@ -60,7 +60,7 @@ class PolicyNetwork(nn.Module):
             torch.Tensor: Torch tensor representation of the action probabilities
         """
         # Forward pass of the state representation through the network to get logits
-        logits = self.policy_network(state)
+        logits = self.policy_network(state.float())
 
         # Softmax over the logits to get action probabilities
         pi_s = nn.Softmax(dim=0)(logits)
