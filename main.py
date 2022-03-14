@@ -1,18 +1,28 @@
 import os
-import torch
 import gym
 from REINFORCE import REINFORCE
 from config import Config
 
 if __name__ == "__main__":
+    # Init folder for model saves
     os.makedirs("models", exist_ok=True)
+
+    # Init Gym env
     env = gym.make("CartPole-v1")
+
+    # Init agent
     agent = REINFORCE(env)
+
+    # Training params
     nb_episodes_per_epoch = Config.NB_EPISODES_PER_EPOCH
     nb_epoch = Config.NB_EPOCH
     nb_episodes_test = Config.NB_EPISODES_TEST
+
+    # Train the agent
     agent.train(env, nb_episodes_per_epoch, nb_epoch)
-    agent.save()
-    agent.test(env, nb_episodes=nb_episodes_test, render=True)
+
+    # Load best agent from training
     agent.load("best")
+
+    # Evaluate and render the policy
     agent.test(env, nb_episodes=nb_episodes_test, render=True)
