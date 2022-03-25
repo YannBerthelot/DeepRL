@@ -2,18 +2,29 @@ class Config:
     DEVICE = "CPU"
 
     ## Networks
-    # Policy
-    POLICY_NN_ARCHITECTURE = [64, 32, 16]
-    POLICY_LEARNING_RATE = 1e-3
-    ENTROPY_FACTOR = 0.02
-    DROPOUT = 0.0
+    # Actor
+    ACTOR_NN_ARCHITECTURE = [64, 32]
+    ACTOR_LEARNING_RATE = 1e-3
+    ACTOR_DROPOUT = 0.0
+    ACTOR_ACTIVATION_FUNCTION = "tanh"
+
+    # Critic
+    # Actor
+    CRITIC_NN_ARCHITECTURE = [64, 32]
+    CRITIC_LEARNING_RATE = 1e-3
+    CRITIC_DROPOUT = 0.0
+    CRITIC_ACTIVATION_FUNCTION = "relu"
 
     # AGENT
     GAMMA = 0.99
     NB_EPISODES_PER_EPOCH = 1
-    NB_EPOCH = 2000
+    NB_EPOCH = 1000
     NB_EPISODES_TEST = 10
     MODEL_PATH = "models"
+    VALUE_FACTOR = 0.5
+    ENTROPY_FACTOR = 0.01
+    # Number of steps to run before running updates on them
+    BATCH_SIZE = 1
 
-    # Used for normalization purpose in the update.
-    BATCH_SIZE = 10
+    # Tensorboard
+    TENSORBOARD_PATH = "logs"

@@ -1,17 +1,18 @@
 import os
 import gym
-from REINFORCE import REINFORCE
+from A2C import A2C
 from config import Config
 
 if __name__ == "__main__":
     # Init folder for model saves
-    os.makedirs("models", exist_ok=True)
+    os.makedirs(Config.MODEL_PATH, exist_ok=True)
+    os.makedirs(Config.TENSORBOARD_PATH, exist_ok=True)
 
     # Init Gym env
     env = gym.make("CartPole-v1")
 
     # Init agent
-    agent = REINFORCE(env)
+    agent = A2C(env)
 
     # Training params
     nb_episodes_per_epoch = Config.NB_EPISODES_PER_EPOCH

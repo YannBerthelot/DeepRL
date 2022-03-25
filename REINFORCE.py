@@ -19,7 +19,7 @@ from tqdm import tqdm
 from config import Config
 
 # Initialize Tensorboard
-writer = SummaryWriter()
+writer = SummaryWriter(log_dir=Config.TENSORBOARD_PATH)
 
 
 class REINFORCE(Agent):

@@ -1,3 +1,4 @@
+from distutils.log import warn
 import gym
 import warnings
 
@@ -9,7 +10,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 # Network creator tool
-from network_utils import get_network_from_architecture
+from network_utils import get_network_from_architecture, t
 
 # Numpy
 import numpy as np
@@ -26,49 +27,122 @@ else:
     device = torch.device("cpu")
 
 
-class PolicyNetwork(nn.Module):
+class Actor(nn.Module):
     def __init__(self, observation_shape, action_shape):
-        super(PolicyNetwork, self).__init__()
+        super().__init__()
 
         # Create the network architecture given the observation, action and config shapes
-        self.input_shape = observation_shape[0]
+        self.input_shape = observation_shape
         self.output_shape = action_shape
-        self.policy_network = get_network_from_architecture(
-            self.input_shape, self.output_shape, Config.POLICY_NN_ARCHITECTURE
+        self.model = get_network_from_architecture(
+            self.input_shape,
+            self.output_shape,
+            Config.ACTOR_NN_ARCHITECTURE,
+            Config.ACTOR_ACTIVATION_FUNCTION,
+            mode="actor",
         )
+
+    def forward(self, X):
+        return self.model(X)
+
+
+class Critic(nn.Module):
+    def __init__(self, observation_shape):
+        super().__init__()
+
+        # Create the network architecture given the observation, action and config shapes
+        self.input_shape = observation_shape
+        self.output_shape = 1
+        self.model = get_network_from_architecture(
+            self.input_shape,
+            self.output_shape,
+            Config.CRITIC_NN_ARCHITECTURE,
+            Config.CRITIC_ACTIVATION_FUNCTION,
+            mode="critic",
+        )
+
+    def forward(self, X):
+        return self.model(X)
+
+
+class ActorCritic(nn.Module):
+    def __init__(self, observation_shape, action_shape):
+        super(ActorCritic, self).__init__()
+
+        # Create the network architecture given the observation, action and config shapes
+        self.actor = Actor(observation_shape[0], action_shape)
+        self.critic = Critic(observation_shape[0])
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
-        self.optimizer = optim.RMSprop(
-            self.policy_network.parameters(),
-            lr=Config.POLICY_LEARNING_RATE,
+        self.actor_optimizer = optim.Adam(
+            self.actor.parameters(),
+            lr=Config.ACTOR_LEARNING_RATE,
         )
-
+        self.critic_optimizer = optim.Adam(
+            self.critic.parameters(),
+            lr=Config.CRITIC_LEARNING_RATE,
+        )
         # Init stuff
         self.loss = None
         self.epoch = 0
         self.writer = None
         self.index = 0
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
+    def select_action(self, observation):
+        probs = self.actor(t(observation))
+        dist = torch.distributions.Categorical(probs=probs)
+        action = dist.sample()
+        return action.detach().data.numpy()
+
+    def update_policy(
+        self,
+        state: np.array,
+        action: np.array,
+        reward: np.array,
+        next_state: np.array,
+        done: bool = False,
+    ) -> None:
         """
-        Computes the policy pi(s, theta) for the given state s and for the current policy parameters theta
-
-        Args:
-            state (torch.Tensor): Torch tensor representation of the state
-
-        Returns:
-            torch.Tensor: Torch tensor representation of the action probabilities
+        TO UPDATE
         """
-        # Forward pass of the state representation through the network to get logits
-        logits = self.policy_network(state)
-
-        # Softmax over the logits to get action probabilities
-        pi_s = nn.Softmax(dim=0)(logits)
 
         # For logging purposes
         self.index += 1
 
-        return pi_s
+        ## Compute the losses
+        # Actor loss
+        probs = self.actor(t(state))
+        dist = torch.distributions.Categorical(probs=probs)
+
+        # Entropy loss
+        entropy_loss = -dist.entropy()
+
+        # Critic loss
+        advantage = (
+            reward
+            + (1 - done) * Config.GAMMA * self.critic(t(next_state))
+            - self.critic(t(state))
+        )
+
+        # Update critic
+        critic_loss = advantage.pow(2).mean()
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
+
+        # Update actor
+        actor_loss = -dist.log_prob(t(action)) * advantage.detach()
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        # Logging
+        if self.writer:
+            self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
+            self.writer.add_scalar("Loss/policy", actor_loss, self.index)
+            self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+        else:
+            warnings.warn("No Tensorboard writer available")
 
     def get_action_probabilities(self, state: np.array) -> np.array:
         """
@@ -80,53 +154,23 @@ class PolicyNetwork(nn.Module):
             state (np.array): np.array representation of the state
 
         Returns:
-            torch.Tensor: np.array representation of the action probabilities
+            np.array: np.array representation of the action probabilities
         """
-        state = torch.Tensor(state, device=device)
-        logits = self.policy_network(state)
-        pi_s = nn.Softmax(dim=0)(logits)
-        return pi_s.detach().cpu().numpy()
+        return self.actor(t(state)).detach().cpu().numpy()
 
-    def update_policy(self, state: np.array, action: np.array, G: np.array) -> None:
+    def get_value(self, state: np.array) -> np.array:
         """
-        Update the policy using the given state, action and reward and the REINFORCE update rule
+        Computes the state value for the given state s and for the current policy parameters theta.
+        Same as forward method with a clearer name for teaching purposes, but as forward is a native method that needs to exist we keep both.
+        Additionnaly this methods outputs np.array instead of torch.Tensor to prevent the existence of pytorch stuff outside of network.py
 
         Args:
-            state (np.array): The state to consider
-            action (np.array): The action to consider
-            G (np.array): The discounted return to consider
+            state (np.array): np.array representation of the state
+
+        Returns:
+            np.array: np.array representation of the action probabilities
         """
-        state = torch.from_numpy(state).to(device=device)
-        action = torch.as_tensor(action).to(device=device)
-        G_t = torch.as_tensor(G).to(device=device)
-
-        # Get the action probabilities
-        action_probabilities = self.forward(state)
-
-        ## Compute the losses
-        # Entropy loss
-        entropy_loss = -Categorical(probs=action_probabilities).entropy()
-
-        # REINFORCE loss
-        policy_loss = -G_t * torch.log(action_probabilities[action])
-
-        # Linear combination of both
-        self.loss = policy_loss + Config.ENTROPY_FACTOR * entropy_loss
-
-        # Logging
-        self.writer.add_scalar("Action/proba_left", action_probabilities[0], self.index)
-        self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
-        self.writer.add_scalar("Loss/policy", policy_loss, self.index)
-        self.writer.add_scalar("Loss/loss", self.loss, self.index)
-
-        # Zero the gradient
-        self.optimizer.zero_grad()
-
-        # Backprop
-        self.loss.backward()
-
-        # Update the parameters
-        self.optimizer.step()
+        return self.critic(t(state)).detach().cpu().numpy()
 
     def save(self, name: str = "model"):
         """
@@ -135,7 +179,8 @@ class PolicyNetwork(nn.Module):
         Args:
             name (str, optional): [Name of the model]. Defaults to "model".
         """
-        torch.save(self.policy_network, f"{Config.MODEL_PATH}/{name}.pth")
+        torch.save(self.actor, f"{Config.MODEL_PATH}/{name}_actor.pth")
+        torch.save(self.critic, f"{Config.MODEL_PATH}/{name}_critic.pth")
 
     def load(self, name: str = "model"):
         """
@@ -144,22 +189,24 @@ class PolicyNetwork(nn.Module):
         Args:
             name (str, optional): The model to be loaded (it should be in the "models" folder). Defaults to "model".
         """
-        self.policy_network = torch.load(f"{Config.MODEL_PATH}/{name}.pth")
+        print("Loading")
+        self.actor = torch.load(f"{Config.MODEL_PATH}/{name}_actor.pth")
+        self.critic = torch.load(f"{Config.MODEL_PATH}/{name}_critic.pth")
 
 
 def test_NN(env):
     print(f"Using {device} device")
     obs_shape = env.observation_space.shape
     action_shape = env.action_space.n
-    model = PolicyNetwork(obs_shape, action_shape).to(device)
+    model = Network(obs_shape, action_shape).to(device)
 
     observation = env.reset()
-    S = torch.tensor(observation, device=device)
-    R = torch.tensor([1.0], device=device)
-    A = torch.tensor([1], device=device)
-    pred_probab = model(S)
-    model.update_policy(S, A, R)
-    print(f"Predicted probas: {pred_probab}")
+    state = np.array(observation)
+    reward = np.array([1.0])
+    action = [1]
+    next_state = np.array(observation)
+    done = False
+    model.update_policy(state, action, reward, next_state, done)
 
 
 if __name__ == "__main__":

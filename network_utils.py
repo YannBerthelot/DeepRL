@@ -3,9 +3,17 @@ import torch.nn as nn
 from typing import List
 import numpy as np
 
+# helper function to convert numpy arrays to tensors
+def t(x):
+    return torch.from_numpy(x).float()
+
 
 def get_network_from_architecture(
-    input_shape, output_shape, architecture: List[int]
+    input_shape,
+    output_shape,
+    architecture: List[int],
+    activation_function: str,
+    mode: str = "actor",
 ) -> torch.nn.modules.container.Sequential:
     """[summary]
 
@@ -18,13 +26,19 @@ def get_network_from_architecture(
     Returns:
         torch.nn.modules.container.Sequential: The pytorch network
     """
+    if activation_function == "relu":
+        activation = nn.ReLU()
+    elif activation_function == "tanh":
+        activation = nn.Tanh()
+    else:
+        raise NotImplementedError
 
     if len(architecture) < 1:
         raise ValueError("You need at least 1 layers")
     elif len(architecture) == 1:
         return nn.Sequential(
             nn.Linear(input_shape, architecture[0]),
-            nn.ReLU(),
+            activation,
             nn.Linear(architecture[0], output_shape),
         )
     else:
@@ -34,15 +48,16 @@ def get_network_from_architecture(
                 _input_shape = input_shape
                 _output_shape = nb_neurons
                 layers.append(nn.Linear(_input_shape, _output_shape))
-                layers.append(nn.ReLU())
+                layers.append(activation)
             else:
                 _input_shape = architecture[i - 1]
                 _output_shape = nb_neurons
                 layers.append(nn.Linear(_input_shape, _output_shape))
-                layers.append(nn.ReLU())
-                layers.append(nn.Dropout(0.01))
+                layers.append(activation)
         _input_shape = architecture[-1]
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))
+        if mode == "actor":
+            layers.append(nn.Softmax(dim=-1))
         network = nn.Sequential(*layers)
         return network
