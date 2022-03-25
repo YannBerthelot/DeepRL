@@ -88,7 +88,15 @@ class ActorCritic(nn.Module):
         self.writer = None
         self.index = 0
 
-    def select_action(self, observation):
+    def select_action(self, observation: np.array) -> np.array:
+        """Select the action based on the observation and the current parametrized policy
+
+        Args:
+            observation (np.array): The current state observation
+
+        Returns:
+            np.array : The selected action(s)
+        """
         probs = self.actor(t(observation))
         dist = torch.distributions.Categorical(probs=probs)
         action = dist.sample()
@@ -98,12 +106,20 @@ class ActorCritic(nn.Module):
         self,
         state: np.array,
         action: np.array,
-        reward: np.array,
+        n_step_return: np.array,
         next_state: np.array,
         done: bool = False,
     ) -> None:
         """
-        TO UPDATE
+        Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
+
+
+        Args:
+            state (np.array): Observation of the state
+            action (np.array): The selected action
+            n_step_return (np.array): The n-step return
+            next_state (np.array): The state n-step after state
+            done (bool, optional): Wether the episode if finished or not at next-state. Used to handle 1-step. Defaults to False.
         """
 
         # For logging purposes
@@ -119,8 +135,8 @@ class ActorCritic(nn.Module):
 
         # Critic loss
         advantage = (
-            reward
-            + (1 - done) * Config.GAMMA * self.critic(t(next_state))
+            n_step_return
+            + (1 - done) * Config.GAMMA ** Config.N_STEPS * self.critic(t(next_state))
             - self.critic(t(state))
         )
 

@@ -1,6 +1,6 @@
 import os
 import gym
-from A2C import A2C
+from n_step_A2C import A2C
 from config import Config
 
 if __name__ == "__main__":
@@ -15,12 +15,11 @@ if __name__ == "__main__":
     agent = A2C(env)
 
     # Training params
-    nb_episodes_per_epoch = Config.NB_EPISODES_PER_EPOCH
-    nb_epoch = Config.NB_EPOCH
+    nb_timesteps_train = Config.NB_TIMESTEPS_TRAIN
     nb_episodes_test = Config.NB_EPISODES_TEST
 
     # Train the agent
-    agent.train(env, nb_episodes_per_epoch, nb_epoch)
+    agent.train(env, nb_timesteps_train)
 
     # Load best agent from training
     agent.load("best")
