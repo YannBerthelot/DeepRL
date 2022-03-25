@@ -15,20 +15,9 @@ from network_utils import get_network_from_architecture, t
 # Numpy
 import numpy as np
 
-# Read config
-from config import Config
-
-# Set the Torch device
-if Config.DEVICE == "GPU":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if not torch.cuda.is_available():
-        warnings.warn("GPU not available, switching to CPU", UserWarning)
-else:
-    device = torch.device("cpu")
-
 
 class Actor(nn.Module):
-    def __init__(self, observation_shape, action_shape):
+    def __init__(self, observation_shape, action_shape, architecture, activation):
         super().__init__()
 
         # Create the network architecture given the observation, action and config shapes
@@ -37,8 +26,8 @@ class Actor(nn.Module):
         self.model = get_network_from_architecture(
             self.input_shape,
             self.output_shape,
-            Config.ACTOR_NN_ARCHITECTURE,
-            Config.ACTOR_ACTIVATION_FUNCTION,
+            architecture,
+            activation,
             mode="actor",
         )
 
@@ -47,7 +36,7 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, observation_shape):
+    def __init__(self, observation_shape, architecture, activation):
         super().__init__()
 
         # Create the network architecture given the observation, action and config shapes
@@ -56,8 +45,8 @@ class Critic(nn.Module):
         self.model = get_network_from_architecture(
             self.input_shape,
             self.output_shape,
-            Config.CRITIC_NN_ARCHITECTURE,
-            Config.CRITIC_ACTIVATION_FUNCTION,
+            architecture,
+            activation,
             mode="critic",
         )
 
@@ -66,21 +55,37 @@ class Critic(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, observation_shape, action_shape):
+    def __init__(self, observation_shape, action_shape, config):
         super(ActorCritic, self).__init__()
-
+        self.config = config
+        # Set the Torch device
+        if config["DEVICE"] == "GPU":
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if not torch.cuda.is_available():
+                warnings.warn("GPU not available, switching to CPU", UserWarning)
+        else:
+            self.device = torch.device("cpu")
         # Create the network architecture given the observation, action and config shapes
-        self.actor = Actor(observation_shape[0], action_shape)
-        self.critic = Critic(observation_shape[0])
+        self.actor = Actor(
+            observation_shape[0],
+            action_shape,
+            eval(config["ACTOR_NN_ARCHITECTURE"]),
+            config["ACTOR_ACTIVATION_FUNCTION"],
+        )
+        self.critic = Critic(
+            observation_shape[0],
+            eval(config["CRITIC_NN_ARCHITECTURE"]),
+            config["CRITIC_ACTIVATION_FUNCTION"],
+        )
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
         self.actor_optimizer = optim.Adam(
             self.actor.parameters(),
-            lr=Config.ACTOR_LEARNING_RATE,
+            lr=config["ACTOR_LEARNING_RATE"],
         )
         self.critic_optimizer = optim.Adam(
             self.critic.parameters(),
-            lr=Config.CRITIC_LEARNING_RATE,
+            lr=config["CRITIC_LEARNING_RATE"],
         )
         # Init stuff
         self.loss = None
@@ -136,7 +141,9 @@ class ActorCritic(nn.Module):
         # Critic loss
         advantage = (
             n_step_return
-            + (1 - done) * Config.GAMMA ** Config.N_STEPS * self.critic(t(next_state))
+            + (1 - done)
+            * self.config["GAMMA"] ** self.config["N_STEPS"]
+            * self.critic(t(next_state))
             - self.critic(t(state))
         )
 
@@ -195,8 +202,8 @@ class ActorCritic(nn.Module):
         Args:
             name (str, optional): [Name of the model]. Defaults to "model".
         """
-        torch.save(self.actor, f"{Config.MODEL_PATH}/{name}_actor.pth")
-        torch.save(self.critic, f"{Config.MODEL_PATH}/{name}_critic.pth")
+        torch.save(self.actor, f'{self.config["MODEL_PATH"]}/{name}_actor.pth')
+        torch.save(self.critic, f'{self.config["MODEL_PATH"]}/{name}_critic.pth')
 
     def load(self, name: str = "model"):
         """
@@ -206,8 +213,8 @@ class ActorCritic(nn.Module):
             name (str, optional): The model to be loaded (it should be in the "models" folder). Defaults to "model".
         """
         print("Loading")
-        self.actor = torch.load(f"{Config.MODEL_PATH}/{name}_actor.pth")
-        self.critic = torch.load(f"{Config.MODEL_PATH}/{name}_critic.pth")
+        self.actor = torch.load(f'{self.config["MODEL_PATH"]}/{name}_actor.pth')
+        self.critic = torch.load(f'{self.config["MODEL_PATH"]}/{name}_critic.pth')
 
 
 def test_NN(env):

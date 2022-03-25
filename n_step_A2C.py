@@ -6,7 +6,7 @@ import gym
 from agent import Agent
 
 # The network we create and the device to run it on
-from network import ActorCritic, Critic, device
+from network import ActorCritic
 
 # Numpy
 import numpy as np
@@ -15,26 +15,17 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-# Load config
-from config import Config
-
 from datetime import datetime
 from datetime import date
 
 now = datetime.now()
 
-current_time = now.strftime("%H:%M")
-
-today = date.today().strftime("%d-%m-%Y")
-
-# Initialize Tensorboard
-writer = SummaryWriter(log_dir=f"{Config.TENSORBOARD_PATH}/{today}/{current_time}")
-
 
 class Memory:
-    def __init__(self, n_steps):
+    def __init__(self, n_steps, config):
         self.steps = {"states": [], "actions": [], "rewards": [], "dones": []}
         self.n_steps = n_steps
+        self.config = config
 
     def add(self, state, action, reward, done):
         self.steps["states"].append(state)
@@ -53,7 +44,9 @@ class Memory:
         for i, reward in enumerate(reversed(self.steps["rewards"])):
             n_step_return += (
                 reward
-                + (1.0 - self.steps["dones"][i]) * Config.GAMMA ** i * n_step_return
+                + (1.0 - self.steps["dones"][i])
+                * self.config["GAMMA"] ** i
+                * n_step_return
             )
         return (
             n_step_return,
@@ -83,21 +76,28 @@ class Memory:
 
 
 class A2C(Agent):
-    def __init__(self, env: gym.Env) -> None:
+    def __init__(self, env: gym.Env, config: dict, comment: str = "") -> None:
         super(Agent, self).__init__()
+
+        # current_time = now.strftime("%H:%M")
+        today = date.today().strftime("%d-%m-%Y")
+        LOG_DIR = (
+            f'{config["TENSORBOARD_PATH"]}/{config["ENVIRONMENT"]}/{today}/{comment}'
+        )
+        # Initialize Tensorboard
+        writer = SummaryWriter(log_dir=LOG_DIR)
 
         # Underlying Gym env
         self.env = env
-        self.memory = Memory(n_steps=Config.N_STEPS)
+        self.__name__ = "n-steps A2C"
+        self.memory = Memory(n_steps=config["N_STEPS"], config=config)
         # Fetch the action and state space from the underlying Gym environment
         self.obs_shape = env.observation_space.shape
         self.action_shape = env.action_space.n
-
+        self.config = config
         # Initialize the policy network with the right shape
-        self.network = ActorCritic(self.obs_shape, self.action_shape).to(device)
-
-        # Define batch size from Config
-        self.batch_size = Config.BATCH_SIZE
+        self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
+        self.network.to(self.network.device)
 
         # For logging purpose
         self.network.writer = writer
@@ -126,14 +126,22 @@ class A2C(Agent):
             nb_episodes_per_epoch (int): Number of episodes per epoch. How much episode to run before updating the policy
             nb_epoch (int): Number of epochs to train on.
         """
+        # Early stopping
+        constant_reward_counter = 0
+        old_reward_sum = 0
 
+        # Init training
         episode = 1
         t = 1
+        t_old = 0
         # Iterate over epochs
+        pbar = tqdm(total=nb_timestep, initial=1)
         while t <= nb_timestep:
+            pbar.update(t - t_old)
+            t_old = t
 
             # Init reward_sum and variables for the episode
-            reward_sum = 0
+            rewards = []
             done, obs = False, env.reset()
 
             # Loop through the episode
@@ -144,12 +152,13 @@ class A2C(Agent):
 
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
+                rewards.append(reward)
 
                 # Add the experience collected to the memory for the n-step processing
                 self.memory.add(obs, action, reward, done)
 
                 # When we have collected n steps we can start learning
-                if t >= Config.N_STEPS:
+                if t >= self.config["N_STEPS"]:
                     # Compute the n-steps return to be used as target and fetch the relevant information from the memory
                     (
                         n_step_return,
@@ -166,23 +175,51 @@ class A2C(Agent):
 
                 # Update timesteps counter, reward sum and move on to the next observation
                 t += 1
-                reward_sum += reward
                 obs = next_obs
 
             # Clear memory to start a new episode
             self.memory.clear()
+            reward_sum = np.sum(rewards)
 
             # Track best model and save it
             if reward_sum > self.best_episode_reward:
                 self.best_episode_reward = reward_sum
                 self.save("best")
-
+            elif reward_sum == old_reward_sum:
+                constant_reward_counter += 1
+                if constant_reward_counter > 10:
+                    break
+            old_reward_sum = reward_sum
             # Log performances in Tensorboard
             self.network.writer.add_scalar(
                 "Reward/Episode_sum_of_rewards", reward_sum, episode
             )
+            self.network.writer.add_histogram(
+                "Reward distribution",
+                np.array(
+                    [
+                        np.mean(rewards),
+                        np.std(rewards),
+                        -np.std(rewards),
+                        max(rewards),
+                        min(rewards),
+                    ]
+                ),
+                episode,
+            )
             # Next episode
             episode += 1
+        # self.network.writer.add_hparams(
+        #     config,
+        #     {
+        #         "train mean reward": np.mean(rewards),
+        #         "train std reward": np.std(rewards),
+        #         "train max reward": max(rewards),
+        #         "train test reward": min(rewards),
+        #     },
+        #     run_name="",
+        # )
+        pbar.close()
 
     def test(self, env: gym.Env, nb_episodes: int, render: bool = False) -> None:
         """
@@ -193,7 +230,7 @@ class A2C(Agent):
             nb_episodes (int): Number of test episodes
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
-
+        episode_rewards = []
         # Iterate over the episodes
         for episode in range(nb_episodes):
             # Init episode
@@ -220,8 +257,19 @@ class A2C(Agent):
                 obs = next_obs
 
             # Logging
-            writer.add_scalar("Reward/test", rewards_sum, episode)
+            self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
             print(f"test number {episode} : {rewards_sum}")
+            episode_rewards.append(rewards_sum)
+        self.network.writer.add_hparams(
+            self.config,
+            {
+                "test mean reward": np.mean(episode_rewards),
+                "test std reward": np.std(episode_rewards),
+                "test max reward": max(episode_rewards),
+                "min test reward": min(episode_rewards),
+            },
+            run_name=".",
+        )
 
     def save(self, name: str = "model"):
         """

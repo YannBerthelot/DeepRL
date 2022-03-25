@@ -1,30 +1,39 @@
-class Config:
-    DEVICE = "CPU"
+import platform
+import torch
 
-    ## Networks
+if torch.cuda.is_available():
+    GPU_NAME = torch.cuda.get_device_name(0)
+else:
+    GPU_NAME = "No GPU"
+config = {
+    # DEVICES
+    "DEVICE": "CPU",
+    "CPU": platform.processor(),
+    "GPU": GPU_NAME,
+    # GLOBAL INFO
+    "ENVIRONMENT": "CartPole-v1",
+    # AGENT INFO
+    # General
+    "AGENT": "n-steps A2C",
+    "GAMMA": 0.99,
+    "NB_TIMESTEPS_TRAIN": 5e4,
+    "NB_EPISODES_TEST": 50,
+    "VALUE_FACTOR": 0.0,
+    "ENTROPY_FACTOR": 0.0,
+    # Specific
+    "N_STEPS": 1,
+    # NETWORKS
     # Actor
-    ACTOR_NN_ARCHITECTURE = [64, 32]
-    ACTOR_LEARNING_RATE = 1e-3
-    ACTOR_DROPOUT = 0.0
-    ACTOR_ACTIVATION_FUNCTION = "tanh"
-
+    "ACTOR_NN_ARCHITECTURE": "[64, 32]",
+    "ACTOR_LEARNING_RATE": 1e-3,
+    "ACTOR_DROPOUT": 0.0,
+    "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
-    # Actor
-    CRITIC_NN_ARCHITECTURE = [64, 32]
-    CRITIC_LEARNING_RATE = 1e-3
-    CRITIC_DROPOUT = 0.0
-    CRITIC_ACTIVATION_FUNCTION = "relu"
-
-    # AGENT
-    GAMMA = 0.99
-    NB_TIMESTEPS_TRAIN = 50000
-    NB_EPISODES_TEST = 10
-    MODEL_PATH = "models"
-    VALUE_FACTOR = 0.5
-    ENTROPY_FACTOR = 0.01
-    # Number of steps to run before running updates on them
-    BATCH_SIZE = 1
-    N_STEPS = 2
-
-    # Tensorboard
-    TENSORBOARD_PATH = "logs"
+    "CRITIC_NN_ARCHITECTURE": "[64, 32]",
+    "CRITIC_LEARNING_RATE": 1e-3,
+    "CRITIC_DROPOUT": 0.0,
+    "CRITIC_ACTIVATION_FUNCTION": "relu",
+    # PATHS
+    "TENSORBOARD_PATH": "logs",
+    "MODEL_PATH": "models",
+}

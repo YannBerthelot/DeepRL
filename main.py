@@ -1,28 +1,33 @@
+import wandb
 import os
 import gym
 from n_step_A2C import A2C
-from config import Config
+from config import config
 
 if __name__ == "__main__":
     # Init folder for model saves
-    os.makedirs(Config.MODEL_PATH, exist_ok=True)
-    os.makedirs(Config.TENSORBOARD_PATH, exist_ok=True)
+    os.makedirs(config["MODEL_PATH"], exist_ok=True)
+    os.makedirs(config["TENSORBOARD_PATH"], exist_ok=True)
 
     # Init Gym env
-    env = gym.make("CartPole-v1")
+    env = gym.make(config["ENVIRONMENT"])
+    wandb.tensorboard.patch(root_logdir="logs")
+    wandb.init(
+        project="my-test-project", entity="yann-berthelot", sync_tensorboard=True
+    )
 
-    # Init agent
-    agent = A2C(env)
+    for n_step in range(1, 10):
 
-    # Training params
-    nb_timesteps_train = Config.NB_TIMESTEPS_TRAIN
-    nb_episodes_test = Config.NB_EPISODES_TEST
+        config["N_STEPS"] = n_step
+        wandb.config = config
+        # Init agent
+        comment = f"n_step : {n_step}"
+        agent = A2C(env, config=config, comment=comment)
+        # Train the agent
+        agent.train(env, config["NB_TIMESTEPS_TRAIN"])
 
-    # Train the agent
-    agent.train(env, nb_timesteps_train)
+        # Load best agent from training
+        agent.load("best")
 
-    # Load best agent from training
-    agent.load("best")
-
-    # Evaluate and render the policy
-    agent.test(env, nb_episodes=nb_episodes_test, render=True)
+        # Evaluate and render the policy
+        agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=False)
