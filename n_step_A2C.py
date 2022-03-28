@@ -1,6 +1,7 @@
 # For type hinting only
 from typing import List
 import gym
+import wandb
 
 # Base class for Agent
 from agent import Agent
@@ -81,9 +82,7 @@ class A2C(Agent):
 
         # current_time = now.strftime("%H:%M")
         today = date.today().strftime("%d-%m-%Y")
-        LOG_DIR = (
-            f'{config["TENSORBOARD_PATH"]}/{config["ENVIRONMENT"]}/{today}/{comment}'
-        )
+        LOG_DIR = f'{config["TENSORBOARD_PATH"]}'  # /{config["ENVIRONMENT"]}/{today}/{comment}'
         # Initialize Tensorboard
         writer = SummaryWriter(log_dir=LOG_DIR)
 
@@ -184,6 +183,7 @@ class A2C(Agent):
             # Track best model and save it
             if reward_sum > self.best_episode_reward:
                 self.best_episode_reward = reward_sum
+                wandb.run.summary["Train/best reward sum"] = reward_sum
                 self.save("best")
             elif reward_sum == old_reward_sum:
                 constant_reward_counter += 1
@@ -191,22 +191,23 @@ class A2C(Agent):
                     break
             old_reward_sum = reward_sum
             # Log performances in Tensorboard
-            self.network.writer.add_scalar(
-                "Reward/Episode_sum_of_rewards", reward_sum, episode
-            )
-            self.network.writer.add_histogram(
-                "Reward distribution",
-                np.array(
-                    [
-                        np.mean(rewards),
-                        np.std(rewards),
-                        -np.std(rewards),
-                        max(rewards),
-                        min(rewards),
-                    ]
-                ),
-                episode,
-            )
+            wandb.log({"Reward/Episode_sum_of_rewards": reward_sum})
+            # self.network.writer.add_scalar(
+            #     "Reward/Episode_sum_of_rewards", reward_sum, episode
+            # )
+            # self.network.writer.add_histogram(
+            #     "Reward distribution",
+            #     np.array(
+            #         [
+            #             np.mean(rewards),
+            #             np.std(rewards),
+            #             -np.std(rewards),
+            #             max(rewards),
+            #             min(rewards),
+            #         ]
+            #     ),
+            #     episode,
+            # )
             # Next episode
             episode += 1
         # self.network.writer.add_hparams(
@@ -257,19 +258,20 @@ class A2C(Agent):
                 obs = next_obs
 
             # Logging
-            self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
+            wandb.log({"Test/reward": rewards_sum, "Test/episode": episode})
+            # self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
             print(f"test number {episode} : {rewards_sum}")
             episode_rewards.append(rewards_sum)
-        self.network.writer.add_hparams(
-            self.config,
-            {
-                "test mean reward": np.mean(episode_rewards),
-                "test std reward": np.std(episode_rewards),
-                "test max reward": max(episode_rewards),
-                "min test reward": min(episode_rewards),
-            },
-            run_name=".",
-        )
+        # self.network.writer.add_hparams(
+        #     self.config,
+        #     {
+        #         "test mean reward": np.mean(episode_rewards),
+        #         "test std reward": np.std(episode_rewards),
+        #         "test max reward": max(episode_rewards),
+        #         "min test reward": min(episode_rewards),
+        #     },
+        #     run_name=".",
+        # )
 
     def save(self, name: str = "model"):
         """

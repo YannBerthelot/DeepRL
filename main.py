@@ -12,22 +12,28 @@ if __name__ == "__main__":
     # Init Gym env
     env = gym.make(config["ENVIRONMENT"])
     wandb.tensorboard.patch(root_logdir="logs")
-    wandb.init(
-        project="my-test-project", entity="yann-berthelot", sync_tensorboard=True
-    )
 
-    for n_step in range(1, 10):
+    for lr in range(4, 6):
+        for experiment in range(1, config["N_EXPERIMENTS"] + 1):
+            config["ACTOR_LEARNING_RATE"] = 10 ** (-lr)
+            config["CRITIC_LEARNING_RATE"] = 10 ** (-lr)
+            run = wandb.init(
+                project="LunarLander-v2 A2C tests",
+                entity="yann-berthelot",
+                name=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
+                # sync_tensorboard=True,
+                reinit=True,
+                config=config,
+            )
+            # Init agent
+            agent = A2C(env, config=config)
 
-        config["N_STEPS"] = n_step
-        wandb.config = config
-        # Init agent
-        comment = f"n_step : {n_step}"
-        agent = A2C(env, config=config, comment=comment)
-        # Train the agent
-        agent.train(env, config["NB_TIMESTEPS_TRAIN"])
+            # Train the agent
+            agent.train(env, config["NB_TIMESTEPS_TRAIN"])
 
-        # Load best agent from training
-        agent.load("best")
+            # Load best agent from training
+            agent.load("best")
 
-        # Evaluate and render the policy
-        agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=False)
+            # Evaluate and render the policy
+            agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=False)
+            run.finish()

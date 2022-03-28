@@ -15,6 +15,8 @@ from network_utils import get_network_from_architecture, t
 # Numpy
 import numpy as np
 
+import wandb
+
 
 class Actor(nn.Module):
     def __init__(self, observation_shape, action_shape, architecture, activation):
@@ -77,6 +79,8 @@ class ActorCritic(nn.Module):
             eval(config["CRITIC_NN_ARCHITECTURE"]),
             config["CRITIC_ACTIVATION_FUNCTION"],
         )
+        wandb.watch(self.actor)
+        wandb.watch(self.critic)
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
         self.actor_optimizer = optim.Adam(
@@ -161,9 +165,12 @@ class ActorCritic(nn.Module):
 
         # Logging
         if self.writer:
-            self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
-            self.writer.add_scalar("Loss/policy", actor_loss, self.index)
-            self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+            # self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
+            # self.writer.add_scalar("Loss/policy", actor_loss, self.index)
+            # self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+            wandb.log({"Loss/entropy": entropy_loss})
+            wandb.log({"Loss/actor": actor_loss})
+            wandb.log({"Loss/critic": critic_loss})
         else:
             warnings.warn("No Tensorboard writer available")
 
