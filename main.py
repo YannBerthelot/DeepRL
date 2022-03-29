@@ -30,7 +30,11 @@ if __name__ == "__main__":
                 )
             # Init agent
             if config["NETWORK_TYPE"] == "rnn":
-                agent = A2CRecurrent(env, config=config, comment=f"{lr} {experiment}")
+                agent = A2CRecurrent(
+                    env,
+                    config=config,
+                    comment=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
+                )
             else:
                 agent = A2C(env, config=config)
 

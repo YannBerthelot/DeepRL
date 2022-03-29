@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 # Network creator tool
-from network_utils import get_network_from_architecture, t, extractlastcell
+from network_utils import get_network_from_architecture, t
 
 # Numpy
 import numpy as np
@@ -19,59 +19,49 @@ import numpy as np
 import wandb
 
 
-class ActorCriticRecurrentNetworks(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim, num_layers, config):
-        super(ActorCriticRecurrentNetworks, self).__init__()
-        self.config = config
-        self.action_dim = action_dim
-        self.recurrent_layer = nn.LSTM(
-            eval(config["COMMON_NN_ARCHITECTURE"])[-1], hidden_dim, batch_first=True
-        )
-        self.common_layers = get_network_from_architecture(
-            state_dim,
-            eval(config["COMMON_NN_ARCHITECTURE"])[-1],
-            eval(config["COMMON_NN_ARCHITECTURE"]),
-            config["COMMON_ACTIVATION_FUNCTION"],
-            mode="common",
-        )
-        self.actor_layers = get_network_from_architecture(
-            config["HIDDEN_SIZE"],
-            action_dim,
-            eval(config["ACTOR_NN_ARCHITECTURE"]),
-            config["ACTOR_ACTIVATION_FUNCTION"],
+class Actor(nn.Module):
+    def __init__(self, observation_shape, action_shape, architecture, activation, type):
+        super().__init__()
+
+        # Create the network architecture given the observation, action and config shapes
+        self.input_shape = observation_shape
+        self.output_shape = action_shape
+        self.model = get_network_from_architecture(
+            self.input_shape,
+            self.output_shape,
+            architecture,
+            activation,
             mode="actor",
+            type=type,
         )
 
-        self.critic_layers = get_network_from_architecture(
-            config["HIDDEN_SIZE"],
-            1,
-            eval(config["CRITIC_NN_ARCHITECTURE"]),
-            config["CRITIC_ACTIVATION_FUNCTION"],
+    def forward(self, X):
+        return self.model(X)
+
+
+class Critic(nn.Module):
+    def __init__(self, observation_shape, architecture, activation, type):
+        super().__init__()
+
+        # Create the network architecture given the observation, action and config shapes
+        self.input_shape = observation_shape
+        self.output_shape = 1
+        self.model = get_network_from_architecture(
+            self.input_shape,
+            self.output_shape,
+            architecture,
+            activation,
             mode="critic",
+            type=type,
         )
-        self.device = "CPU"
 
-    def forward(self, state, hidden):
-        x = F.relu(self.common_layers(state))
-        x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
-        x, lstm_hidden = self.recurrent_layer(x, hidden)
-        return x, hidden
-
-    def actor(self, state, hidden):
-        x, hidden = self.forward(state, hidden)
-        x = self.actor_layers(x)
-        probs = F.softmax(x, dim=2)
-        return probs, hidden
-
-    def critic(self, state, hidden):
-        x, hidden = self.forward(state, hidden)
-        values = self.critic_layers(x)
-        return values
+    def forward(self, X):
+        return self.model(X)
 
 
-class ActorCriticRecurrent(nn.Module):
+class ActorCritic(nn.Module):
     def __init__(self, observation_shape, action_shape, config):
-        super(ActorCriticRecurrent, self).__init__()
+        super(ActorCritic, self).__init__()
         self.config = config
         # Set the Torch device
         if config["DEVICE"] == "GPU":
@@ -81,23 +71,32 @@ class ActorCriticRecurrent(nn.Module):
         else:
             self.device = torch.device("cpu")
         # Create the network architecture given the observation, action and config shapes
-        self.actorcritic = ActorCriticRecurrentNetworks(
+        self.actor = Actor(
             observation_shape[0],
             action_shape,
-            self.config["HIDDEN_SIZE"],
-            self.config["HIDDEN_LAYERS"],
-            self.config,
+            eval(config["ACTOR_NN_ARCHITECTURE"]),
+            config["ACTOR_ACTIVATION_FUNCTION"],
+            type=config["NETWORK_TYPE"],
         )
-        print(self.actorcritic)
+        self.critic = Critic(
+            observation_shape[0],
+            eval(config["CRITIC_NN_ARCHITECTURE"]),
+            config["CRITIC_ACTIVATION_FUNCTION"],
+            type=config["NETWORK_TYPE"],
+        )
         if self.config["logging"] == "wandb":
-            wandb.watch(self.actorcritic)
+            wandb.watch(self.actor)
+            wandb.watch(self.critic)
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
-        self.optimizer = optim.Adam(
-            self.actorcritic.parameters(),
+        self.actor_optimizer = optim.Adam(
+            self.actor.parameters(),
             lr=config["LEARNING_RATE"],
         )
-
+        self.critic_optimizer = optim.Adam(
+            self.critic.parameters(),
+            lr=config["LEARNING_RATE"],
+        )
         # Init stuff
         self.loss = None
         self.epoch = 0
@@ -105,7 +104,7 @@ class ActorCriticRecurrent(nn.Module):
         self.index = 0
         self.hidden = None
 
-    def select_action(self, observation: np.array, hidden: np.array) -> np.array:
+    def select_action(self, observation: np.array) -> np.array:
         """Select the action based on the observation and the current parametrized policy
 
         Args:
@@ -114,13 +113,10 @@ class ActorCriticRecurrent(nn.Module):
         Returns:
             np.array : The selected action(s)
         """
-        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
-            :, None, :
-        ]
-        probs, hidden = self.actorcritic.actor(observation, hidden)
+        probs = self.actor(t(observation), self.actor.hidden)
         dist = torch.distributions.Categorical(probs=probs)
         action = dist.sample()
-        return action.detach().data.numpy()[0, 0], hidden
+        return action.detach().data.numpy()
 
     def update_policy(
         self,
@@ -128,8 +124,6 @@ class ActorCriticRecurrent(nn.Module):
         action: np.array,
         n_step_return: np.array,
         next_state: np.array,
-        hidden: np.array,
-        next_hidden: np.array,
         done: bool = False,
     ) -> None:
         """
@@ -149,12 +143,7 @@ class ActorCriticRecurrent(nn.Module):
 
         ## Compute the losses
         # Actor loss
-        state = t(state).reshape(1, -1)[:, None, :]
-        next_state = t(next_state).reshape(1, -1)[:, None, :]
-        probs, _ = self.actorcritic.actor(
-            state,
-            hidden,
-        )
+        probs = self.actor(t(state), self.actor.hidden)
         dist = torch.distributions.Categorical(probs=probs)
 
         # Entropy loss
@@ -165,21 +154,21 @@ class ActorCriticRecurrent(nn.Module):
             n_step_return
             + (1 - done)
             * self.config["GAMMA"] ** self.config["N_STEPS"]
-            * self.actorcritic.critic(next_state, next_hidden)
-            - self.actorcritic.critic(state, hidden)
+            * self.critic(t(next_state), self.critic.hidden)
+            - self.critic(t(state), self.critic.hidden)
         )
 
         # Update critic
         critic_loss = advantage.pow(2).mean()
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
         # Update actor
-        actor_loss = -dist.log_prob(t(np.array([action]))) * advantage.detach()
-
-        loss = actor_loss + self.config["VALUE_FACTOR"] * critic_loss
-
-        self.optimizer.zero_grad()
-        loss.mean().backward(retain_graph=True)
-        self.optimizer.step()
+        actor_loss = -dist.log_prob(t(action)) * advantage.detach()
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
 
         # Logging
         if self.writer:
@@ -187,6 +176,7 @@ class ActorCriticRecurrent(nn.Module):
                 self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
                 self.writer.add_scalar("Loss/policy", actor_loss, self.index)
                 self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
@@ -229,8 +219,8 @@ class ActorCriticRecurrent(nn.Module):
         Args:
             name (str, optional): [Name of the model]. Defaults to "model".
         """
-        torch.save(self.actorcritic, f'{self.config["MODEL_PATH"]}/{name}.pth')
-        # torch.save(self.critic, f'{self.config["MODEL_PATH"]}/{name}_critic.pth')
+        torch.save(self.actor, f'{self.config["MODEL_PATH"]}/{name}_actor.pth')
+        torch.save(self.critic, f'{self.config["MODEL_PATH"]}/{name}_critic.pth')
 
     def load(self, name: str = "model"):
         """
@@ -240,49 +230,5 @@ class ActorCriticRecurrent(nn.Module):
             name (str, optional): The model to be loaded (it should be in the "models" folder). Defaults to "model".
         """
         print("Loading")
-        self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
-        # self.critic = torch.load(f'{self.config["MODEL_PATH"]}/{name}_critic.pth')
-
-    def get_initial_states(self):
-        h_0, c_0 = None, None
-
-        h_0 = torch.zeros(
-            (
-                self.actorcritic.recurrent_layer.num_layers,
-                1,
-                self.actorcritic.recurrent_layer.hidden_size,
-            ),
-            dtype=torch.float,
-        )
-        h_0 = h_0.to(device=self.device)
-
-        c_0 = torch.zeros(
-            (
-                self.actorcritic.recurrent_layer.num_layers,
-                1,
-                self.actorcritic.recurrent_layer.hidden_size,
-            ),
-            dtype=torch.float,
-        )
-        c_0 = c_0.to(device=self.device)
-        return (h_0, c_0)
-
-
-def test_NN(env):
-    print(f"Using {device} device")
-    obs_shape = env.observation_space.shape
-    action_shape = env.action_space.n
-    model = Network(obs_shape, action_shape).to(device)
-
-    observation = env.reset()
-    state = np.array(observation)
-    reward = np.array([1.0])
-    action = [1]
-    next_state = np.array(observation)
-    done = False
-    model.update_policy(state, action, reward, next_state, done)
-
-
-if __name__ == "__main__":
-    env = gym.make("CartPole-v1")
-    test_NN(env)
+        self.actor = torch.load(f'{self.config["MODEL_PATH"]}/{name}_actor.pth')
+        self.critic = torch.load(f'{self.config["MODEL_PATH"]}/{name}_critic.pth')

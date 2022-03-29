@@ -7,7 +7,8 @@ import wandb
 from agent import Agent
 
 # The network we create and the device to run it on
-from network import ActorCriticRecurrent
+from network import ActorCritic
+from recurrent_network import ActorCriticRecurrent
 
 # Numpy
 import numpy as np
