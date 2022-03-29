@@ -1,7 +1,7 @@
 import wandb
 import os
 import gym
-from n_step_A2C import A2C
+from n_step_A2C import A2C, A2CRecurrent
 from config import config
 
 if __name__ == "__main__":
@@ -11,22 +11,28 @@ if __name__ == "__main__":
 
     # Init Gym env
     env = gym.make(config["ENVIRONMENT"])
-    wandb.tensorboard.patch(root_logdir="logs")
+    if config["logging"] == "wandb":
+        wandb.tensorboard.patch(root_logdir="logs")
 
-    for lr in range(4, 6):
+    for lr in range(3, 4 + 1):
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             config["ACTOR_LEARNING_RATE"] = 10 ** (-lr)
             config["CRITIC_LEARNING_RATE"] = 10 ** (-lr)
-            run = wandb.init(
-                project="LunarLander-v2 A2C tests",
-                entity="yann-berthelot",
-                name=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
-                # sync_tensorboard=True,
-                reinit=True,
-                config=config,
-            )
+            config["LEARNING_RATE"] = 10 ** (-lr)
+            if config["logging"] == "wandb":
+                run = wandb.init(
+                    project="CartPole-v1 A2C RNN tests",
+                    entity="yann-berthelot",
+                    name=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
+                    # sync_tensorboard=True,
+                    reinit=True,
+                    config=config,
+                )
             # Init agent
-            agent = A2C(env, config=config)
+            if config["NETWORK_TYPE"] == "rnn":
+                agent = A2CRecurrent(env, config=config, comment=f"{lr} {experiment}")
+            else:
+                agent = A2C(env, config=config)
 
             # Train the agent
             agent.train(env, config["NB_TIMESTEPS_TRAIN"])
@@ -36,4 +42,5 @@ if __name__ == "__main__":
 
             # Evaluate and render the policy
             agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=False)
-            run.finish()
+            if config["logging"] == "wandb":
+                run.finish()
