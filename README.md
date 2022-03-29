@@ -27,3 +27,9 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
+
+
+## To-do
+- [ ] Merge A2C, n_steps A2C and LSTM A2C
+- [ ] Add normalization/standardization of states and rewards
+- [ ] Add tests
