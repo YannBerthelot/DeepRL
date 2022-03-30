@@ -297,9 +297,14 @@ class ActorCritic(nn.Module):
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
-            wandb.log({"Loss/entropy": entropy_loss})
-            wandb.log({"Loss/actor": actor_loss})
-            wandb.log({"Loss/critic": critic_loss})
+            wandb.log(
+                {
+                    "Loss/entropy": entropy_loss,
+                    "Loss/actor": actor_loss,
+                    "Loss/critic": critic_loss,
+                },
+                commit=True,
+            )
 
     def get_action_probabilities(self, state: np.array) -> np.array:
         """
@@ -347,6 +352,7 @@ class ActorCritic(nn.Module):
         """
         print("Loading")
         self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
+        print(self.actorcritic)
 
     def get_initial_states(self):
         h_0, c_0 = None, None

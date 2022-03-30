@@ -11,7 +11,7 @@ config = {
     "CPU": platform.processor(),
     "GPU": GPU_NAME,
     # GLOBAL INFO
-    "ENVIRONMENT": "CartPole-v1",
+    "ENVIRONMENT": "LunarLander-v2",
     # AGENT INFO
     # General
     "AGENT": "n-steps A2C",
@@ -44,8 +44,11 @@ config = {
     "TENSORBOARD_PATH": "logs",
     "MODEL_PATH": "models",
     # Experiments
-    "N_EXPERIMENTS": 10,
+    "N_EXPERIMENTS": 3,
     "EARLY_STOPPING_STEPS": 100000,
     # Logging
     "logging": "wandb",
+    # Normalization
+    "NORMALIZE": True,
+    "LEARNING_START": 1000,
 }
