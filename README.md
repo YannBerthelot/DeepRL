@@ -10,7 +10,6 @@ Not really packaged at the moment, just clone the repo and use the things. Insta
 
 ```bash
 git clone https://github.com/YannBerthelot/DeepRL.git
-git checkout LSTM_N_STEP_A2C
 cd DeepRL
 poetry install
 ```
