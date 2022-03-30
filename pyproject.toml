@@ -13,6 +13,10 @@ tqdm = "4.62.3"
 tensorboard = "2.8.0"
 pyglet = "1.5.21"
 pandas = "1.4.1"
+matplotlib = "^3.5.1"
+Box2D = "^2.3.10"
+pep517 = "^0.12.0"
+wandb = "0.12.10"
 
 [tool.poetry.dev-dependencies]
 

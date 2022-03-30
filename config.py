@@ -1,19 +1,51 @@
-class Config:
-    DEVICE = "CPU"
+import platform
+import torch
 
-    ## Networks
-    # Policy
-    POLICY_NN_ARCHITECTURE = [64, 32, 16]
-    POLICY_LEARNING_RATE = 1e-3
-    ENTROPY_FACTOR = 0.02
-    DROPOUT = 0.0
-
-    # AGENT
-    GAMMA = 0.99
-    NB_EPISODES_PER_EPOCH = 1
-    NB_EPOCH = 2000
-    NB_EPISODES_TEST = 10
-    MODEL_PATH = "models"
-
-    # Used for normalization purpose in the update.
-    BATCH_SIZE = 10
+if torch.cuda.is_available():
+    GPU_NAME = torch.cuda.get_device_name(0)
+else:
+    GPU_NAME = "No GPU"
+config = {
+    # DEVICES
+    "DEVICE": "CPU",
+    "CPU": platform.processor(),
+    "GPU": GPU_NAME,
+    # GLOBAL INFO
+    "ENVIRONMENT": "CartPole-v1",
+    # AGENT INFO
+    # General
+    "AGENT": "n-steps A2C",
+    "GAMMA": 0.99,
+    "NB_TIMESTEPS_TRAIN": 5e4,
+    "NB_EPISODES_TEST": 50,
+    "VALUE_FACTOR": 0.5,
+    "ENTROPY_FACTOR": 0.0,
+    # Specific
+    "N_STEPS": 1,
+    # NETWORKS
+    "RECURRENT": True,
+    "LEARNING_RATE": 1e-3,
+    # RNN
+    "HIDDEN_SIZE": 32,
+    "HIDDEN_LAYERS": 1,
+    "COMMON_NN_ARCHITECTURE": "[64]",
+    "COMMON_ACTIVATION_FUNCTION": "relu",
+    # Actor
+    "ACTOR_NN_ARCHITECTURE": "[32]",
+    # "ACTOR_LEARNING_RATE": 1e-3,
+    "ACTOR_DROPOUT": 0.0,
+    "ACTOR_ACTIVATION_FUNCTION": "tanh",
+    # Critic
+    "CRITIC_NN_ARCHITECTURE": "[32]",
+    # "CRITIC_LEARNING_RATE": 1e-3,
+    "CRITIC_DROPOUT": 0.0,
+    "CRITIC_ACTIVATION_FUNCTION": "relu",
+    # PATHS
+    "TENSORBOARD_PATH": "logs",
+    "MODEL_PATH": "models",
+    # Experiments
+    "N_EXPERIMENTS": 10,
+    "EARLY_STOPPING_STEPS": 100000,
+    # Logging
+    "logging": "wandb",
+}
