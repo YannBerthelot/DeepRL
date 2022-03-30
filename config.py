@@ -23,7 +23,7 @@ config = {
     # Specific
     "N_STEPS": 1,
     # NETWORKS
-    "NETWORK_TYPE": "rnn",
+    "RECURRENT": True,
     "LEARNING_RATE": 1e-3,
     # RNN
     "HIDDEN_SIZE": 32,
@@ -31,12 +31,12 @@ config = {
     "COMMON_NN_ARCHITECTURE": "[64]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
-    "ACTOR_NN_ARCHITECTURE": "[]",
+    "ACTOR_NN_ARCHITECTURE": "[32]",
     # "ACTOR_LEARNING_RATE": 1e-3,
     "ACTOR_DROPOUT": 0.0,
     "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
-    "CRITIC_NN_ARCHITECTURE": "[]",
+    "CRITIC_NN_ARCHITECTURE": "[32]",
     # "CRITIC_LEARNING_RATE": 1e-3,
     "CRITIC_DROPOUT": 0.0,
     "CRITIC_ACTIVATION_FUNCTION": "relu",
@@ -45,7 +45,7 @@ config = {
     "MODEL_PATH": "models",
     # Experiments
     "N_EXPERIMENTS": 10,
-    "EARLY_STOPPING_STEPS": 10000,
+    "EARLY_STOPPING_STEPS": 100000,
     # Logging
-    "logging": "tensorboard",
+    "logging": "wandb",
 }

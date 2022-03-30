@@ -1,8 +1,9 @@
 import wandb
 import os
 import gym
-from n_step_A2C import A2C, A2CRecurrent
+from n_step_A2C import A2C
 from config import config
+from copy import copy
 
 if __name__ == "__main__":
     # Init folder for model saves
@@ -14,29 +15,38 @@ if __name__ == "__main__":
     if config["logging"] == "wandb":
         wandb.tensorboard.patch(root_logdir="logs")
 
-    for lr in range(3, 4 + 1):
+    config_0 = copy(config)
+    config_0["name"] = "FC"
+    config_0["RECURRENT"] = False
+    config_0["COMMON_NN_ARCHITECTURE"] = "[64]"
+    config_0["ACTOR_NN_ARCHITECTURE"] = "[32]"
+    config_0["CRITIC_NN_ARCHITECTURE"] = "[32]"
+
+    config_1 = copy(config)
+    config_1["name"] = "LSTM"
+    config_1["RECURRENT"] = True
+    config_1["HIDDEN_SIZE"] = 32
+    config_1["COMMON_NN_ARCHITECTURE"] = "[64]"
+    config_1["ACTOR_NN_ARCHITECTURE"] = "[]"
+    config_1["CRITIC_NN_ARCHITECTURE"] = "[]"
+
+    for i, config in enumerate([config_0, config_1]):
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
-            config["ACTOR_LEARNING_RATE"] = 10 ** (-lr)
-            config["CRITIC_LEARNING_RATE"] = 10 ** (-lr)
-            config["LEARNING_RATE"] = 10 ** (-lr)
             if config["logging"] == "wandb":
                 run = wandb.init(
                     project="CartPole-v1 A2C RNN tests",
                     entity="yann-berthelot",
-                    name=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
+                    name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                     # sync_tensorboard=True,
                     reinit=True,
                     config=config,
                 )
             # Init agent
-            if config["NETWORK_TYPE"] == "rnn":
-                agent = A2CRecurrent(
-                    env,
-                    config=config,
-                    comment=f'lr : 1e-{lr} {experiment}/{config["N_EXPERIMENTS"]}',
-                )
-            else:
-                agent = A2C(env, config=config)
+            agent = A2C(
+                env,
+                config=config,
+                comment=f'config {i} {experiment}/{config["N_EXPERIMENTS"]}',
+            )
 
             # Train the agent
             agent.train(env, config["NB_TIMESTEPS_TRAIN"])

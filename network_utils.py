@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from typing import List
-import numpy as np
 
 # helper function to convert numpy arrays to tensors
 def t(x):
@@ -81,83 +80,5 @@ def get_fc_network_from_architecture(
         _input_shape = architecture[-1]
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))
-        # if mode == "actor":
-        #     layers.append(nn.Softmax(dim=-1))
         network = nn.Sequential(*layers)
         return network
-
-
-def get_rnn_network_from_architecture(
-    input_shape,
-    output_shape,
-    architecture: List[int],
-    activation_function: str,
-    mode: str = "actor",
-) -> torch.nn.modules.container.Sequential:
-    """[summary]
-
-    Args:
-        architecture (List[int]): Architecture in terms of number of neurons per layer of the neural network
-
-    Raises:
-        ValueError: Returns an error if there aren't any layers provided
-
-    Returns:
-        torch.nn.modules.container.Sequential: The pytorch network
-    """
-    if activation_function == "relu":
-        activation = nn.ReLU()
-    elif activation_function == "tanh":
-        activation = nn.Tanh()
-    else:
-        raise NotImplementedError
-
-    if len(architecture) < 1:
-        raise ValueError("You need at least 1 layers")
-    elif len(architecture) == 1:
-        return nn.Sequential(
-            nn.RNN(
-                input_shape,
-                architecture[0],
-                1,
-                batch_first=True,
-                nonlinearity=activation_function,
-            ),
-            extractlastcell(),
-            nn.Linear(architecture[0], output_shape),
-        )
-    else:
-        layers = []
-        for i, nb_neurons in enumerate(architecture):
-            if i == 0:
-                _input_shape = input_shape
-                _output_shape = nb_neurons
-                layers.append(
-                    nn.RNN(
-                        _input_shape,
-                        _output_shape,
-                        1,
-                        batch_first=True,
-                        nonlinearity=activation_function,
-                    )
-                ),
-                layers.append(extractlastcell())
-            else:
-                _input_shape = architecture[i - 1]
-                _output_shape = nb_neurons
-                layers.append(nn.Linear(_input_shape, _output_shape))
-                layers.append(activation)
-        _input_shape = architecture[-1]
-        _output_shape = output_shape
-        layers.append(nn.Linear(_input_shape, _output_shape))
-        if mode == "actor":
-            layers.append(nn.Softmax(dim=-1))
-        network = nn.Sequential(*layers)
-        print(network)
-        return network
-
-
-class extractlastcell(nn.Module):
-    def forward(self, x):
-        out, _ = x
-        return out[:, -1, :]
