@@ -1,6 +1,6 @@
 # For type hinting only
-from typing import List
 import gym
+import wandb
 
 # Base class for Agent
 from agent import Agent
@@ -23,18 +23,31 @@ now = datetime.now()
 
 class Memory:
     def __init__(self, n_steps, config):
-        self.steps = {"states": [], "actions": [], "rewards": [], "dones": []}
+        self.steps = {
+            "states": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "hiddens": [],
+        }
         self.n_steps = n_steps
         self.config = config
 
-    def add(self, state, action, reward, done):
+    def add(self, state, action, reward, done, hidden=None):
         self.steps["states"].append(state)
         self.steps["actions"].append(action)
         self.steps["rewards"].append(reward)
         self.steps["dones"].append(done)
+        self.steps["hiddens"].append(hidden)
 
     def clear(self):
-        self.steps = {"states": [], "actions": [], "rewards": [], "dones": []}
+        self.steps = {
+            "states": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "hiddens": [],
+        }
 
     def remove_first_step(self):
         self.steps = {key: values[1:] for key, values in self.steps.items()}
@@ -48,12 +61,13 @@ class Memory:
                 * self.config["GAMMA"] ** i
                 * n_step_return
             )
-        return (
-            n_step_return,
-            self.steps["states"][0],
-            self.steps["actions"][0],
-            self.steps["dones"][0],
-        )
+            return (
+                n_step_return,
+                self.steps["states"][0],
+                self.steps["actions"][0],
+                self.steps["dones"][0],
+                self.steps["hiddens"][0],
+            )
 
     def get_step(self, i):
         return {key: values[i] for key, values in self.steps.items()}
@@ -95,6 +109,7 @@ class A2C(Agent):
         self.obs_shape = env.observation_space.shape
         self.action_shape = env.action_space.n
         self.config = config
+        self.recurrent = self.config["RECURRENT"]
         # Initialize the policy network with the right shape
         self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
         self.network.to(self.network.device)
@@ -103,7 +118,9 @@ class A2C(Agent):
         self.network.writer = writer
         self.best_episode_reward = 0
 
-    def select_action(self, observation: np.array, testing: bool = False) -> int:
+    def select_action(
+        self, observation: np.array, hidden: np.array, testing: bool = False
+    ) -> int:
         """
         Select the action based on the current policy and the observation
 
@@ -114,7 +131,7 @@ class A2C(Agent):
         Returns:
             int: The selected action
         """
-        return self.network.select_action(observation)
+        return self.network.select_action(observation, hidden)
 
     def train(self, env: gym.Env, nb_timestep: int) -> None:
         """
@@ -134,8 +151,14 @@ class A2C(Agent):
         episode = 1
         t = 1
         t_old = 0
+        if self.recurrent:
+            hidden = self.network.get_initial_states()
+        else:
+            hidden = None
+
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
+
         while t <= nb_timestep:
             pbar.update(t - t_old)
             t_old = t
@@ -148,14 +171,14 @@ class A2C(Agent):
             while not done:
 
                 # Select the action using the actor network
-                action = self.select_action(obs)
+                action, next_hidden = self.select_action(obs, hidden)
 
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
 
                 # Add the experience collected to the memory for the n-step processing
-                self.memory.add(obs, action, reward, done)
+                self.memory.add(obs, action, reward, done, hidden)
 
                 # When we have collected n steps we can start learning
                 if t >= self.config["N_STEPS"]:
@@ -165,10 +188,17 @@ class A2C(Agent):
                         old_obs,
                         old_action,
                         old_done,
+                        old_hidden,
                     ) = self.memory.compute_return()
                     # Run the n-step A2C update
                     self.network.update_policy(
-                        old_obs, old_action, n_step_return, next_obs, done
+                        old_obs,
+                        old_action,
+                        n_step_return,
+                        next_obs,
+                        old_hidden,
+                        hidden,
+                        done,
                     )
                     # Clear the used experience from the memory
                     self.memory.remove_first_step()
@@ -176,6 +206,7 @@ class A2C(Agent):
                 # Update timesteps counter, reward sum and move on to the next observation
                 t += 1
                 obs = next_obs
+                hidden = next_hidden
 
             # Clear memory to start a new episode
             self.memory.clear()
@@ -184,41 +215,50 @@ class A2C(Agent):
             # Track best model and save it
             if reward_sum > self.best_episode_reward:
                 self.best_episode_reward = reward_sum
+                if self.config["logging"] == "wandb":
+                    wandb.run.summary["Train/best reward sum"] = reward_sum
                 self.save("best")
             elif reward_sum == old_reward_sum:
                 constant_reward_counter += 1
-                if constant_reward_counter > 10:
+                if constant_reward_counter > self.config["EARLY_STOPPING_STEPS"]:
+                    print(
+                        f'Early stopping due to constant reward for {self.config["EARLY_STOPPING_STEPS"]} steps'
+                    )
                     break
             old_reward_sum = reward_sum
             # Log performances in Tensorboard
-            self.network.writer.add_scalar(
-                "Reward/Episode_sum_of_rewards", reward_sum, episode
-            )
-            self.network.writer.add_histogram(
-                "Reward distribution",
-                np.array(
-                    [
-                        np.mean(rewards),
-                        np.std(rewards),
-                        -np.std(rewards),
-                        max(rewards),
-                        min(rewards),
-                    ]
-                ),
-                episode,
-            )
+            if self.config["logging"] == "wandb":
+                wandb.log({"Reward/Episode_sum_of_rewards": reward_sum})
+            elif self.config["logging"] == "tensorboard":
+                self.network.writer.add_scalar(
+                    "Reward/Episode_sum_of_rewards", reward_sum, episode
+                )
+                self.network.writer.add_histogram(
+                    "Reward distribution",
+                    np.array(
+                        [
+                            np.mean(rewards),
+                            np.std(rewards),
+                            -np.std(rewards),
+                            max(rewards),
+                            min(rewards),
+                        ]
+                    ),
+                    episode,
+                )
             # Next episode
             episode += 1
-        # self.network.writer.add_hparams(
-        #     config,
-        #     {
-        #         "train mean reward": np.mean(rewards),
-        #         "train std reward": np.std(rewards),
-        #         "train max reward": max(rewards),
-        #         "train test reward": min(rewards),
-        #     },
-        #     run_name="",
-        # )
+        if self.config["logging"] == "tensorboard":
+            self.network.writer.add_hparams(
+                self.config,
+                {
+                    "train mean reward": np.mean(rewards),
+                    "train std reward": np.std(rewards),
+                    "train max reward": max(rewards),
+                    "train test reward": min(rewards),
+                },
+                run_name="test",
+            )
         pbar.close()
 
     def test(self, env: gym.Env, nb_episodes: int, render: bool = False) -> None:
@@ -231,8 +271,12 @@ class A2C(Agent):
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
         episode_rewards = []
+        if self.recurrent:
+            hidden = self.network.get_initial_states()
+        else:
+            hidden = None
         # Iterate over the episodes
-        for episode in range(nb_episodes):
+        for episode in tqdm(range(nb_episodes)):
             # Init episode
             done = False
             obs = env.reset()
@@ -241,7 +285,7 @@ class A2C(Agent):
             # Generate episode
             while not done:
                 # Select the action using the current policy
-                action = self.select_action(obs)
+                action, next_hidden = self.select_action(obs, hidden)
 
                 # Step the environment accordingly
                 next_obs, reward, done, _ = env.step(action)
@@ -255,21 +299,26 @@ class A2C(Agent):
 
                 # Next step
                 obs = next_obs
+                hidden = next_hidden
 
             # Logging
-            self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
-            print(f"test number {episode} : {rewards_sum}")
+            if self.config["logging"] == "wandb":
+                wandb.log({"Test/reward": rewards_sum, "Test/episode": episode})
+            elif self.config["logging"] == "tensorboard":
+                self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
+            # print(f"test number {episode} : {rewards_sum}")
             episode_rewards.append(rewards_sum)
-        self.network.writer.add_hparams(
-            self.config,
-            {
-                "test mean reward": np.mean(episode_rewards),
-                "test std reward": np.std(episode_rewards),
-                "test max reward": max(episode_rewards),
-                "min test reward": min(episode_rewards),
-            },
-            run_name=".",
-        )
+        if self.config["logging"] == "tensorboard":
+            self.network.writer.add_hparams(
+                self.config,
+                {
+                    "test mean reward": np.mean(episode_rewards),
+                    "test std reward": np.std(episode_rewards),
+                    "test max reward": max(episode_rewards),
+                    "min test reward": min(episode_rewards),
+                },
+                run_name="test",
+            )
 
     def save(self, name: str = "model"):
         """

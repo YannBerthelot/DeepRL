@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from typing import List
-import numpy as np
 
 # helper function to convert numpy arrays to tensors
 def t(x):
@@ -9,6 +8,26 @@ def t(x):
 
 
 def get_network_from_architecture(
+    input_shape: int,
+    output_shape: int,
+    architecture: List[int],
+    activation_function: str,
+    mode: str = "actor",
+    type: str = "fc",
+) -> torch.nn.modules.container.Sequential:
+    if type == "fc":
+        return get_fc_network_from_architecture(
+            input_shape, output_shape, architecture, activation_function, mode
+        )
+    elif type == "rnn":
+        return get_rnn_network_from_architecture(
+            input_shape, output_shape, architecture, activation_function, mode
+        )
+    else:
+        raise ValueError(f"Network type {type} not recognized")
+
+
+def get_fc_network_from_architecture(
     input_shape,
     output_shape,
     architecture: List[int],
@@ -34,30 +53,32 @@ def get_network_from_architecture(
         raise NotImplementedError
 
     if len(architecture) < 1:
-        raise ValueError("You need at least 1 layers")
+        return nn.Linear(input_shape, output_shape)
     elif len(architecture) == 1:
-        return nn.Sequential(
-            nn.Linear(input_shape, architecture[0]),
-            activation,
-            nn.Linear(architecture[0], output_shape),
-        )
+        if mode == "common":
+            return nn.Linear(input_shape, output_shape)
+        else:
+            return nn.Sequential(
+                nn.Linear(input_shape, architecture[0]),
+                activation,
+                nn.Linear(architecture[0], output_shape),
+            )
     else:
         layers = []
         for i, nb_neurons in enumerate(architecture):
             if i == 0:
                 _input_shape = input_shape
-                _output_shape = nb_neurons
+                _output_shape = int(nb_neurons)
+                print(_input_shape, _output_shape)
                 layers.append(nn.Linear(_input_shape, _output_shape))
                 layers.append(activation)
             else:
-                _input_shape = architecture[i - 1]
-                _output_shape = nb_neurons
+                _input_shape = int(architecture[i - 1])
+                _output_shape = int(nb_neurons)
                 layers.append(nn.Linear(_input_shape, _output_shape))
                 layers.append(activation)
         _input_shape = architecture[-1]
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))
-        if mode == "actor":
-            layers.append(nn.Softmax(dim=-1))
         network = nn.Sequential(*layers)
         return network
