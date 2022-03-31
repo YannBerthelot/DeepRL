@@ -16,28 +16,27 @@ config = {
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 5e4,
+    "NB_TIMESTEPS_TRAIN": 2e5,
     "NB_EPISODES_TEST": 50,
     "VALUE_FACTOR": 0.5,
-    "ENTROPY_FACTOR": 0.0,
+    "ENTROPY_FACTOR": 0.005,
     # Specific
-    "N_STEPS": 1,
+    "N_STEPS": 5,
     # NETWORKS
     "RECURRENT": True,
-    "LEARNING_RATE": 1e-3,
+    "LEARNING_RATE": 1e-4,
+    "TARGET_NETWORK_UPDATE": 10,
     # RNN
-    "HIDDEN_SIZE": 32,
+    "HIDDEN_SIZE": 128,
     "HIDDEN_LAYERS": 1,
-    "COMMON_NN_ARCHITECTURE": "[64]",
+    "COMMON_NN_ARCHITECTURE": "[256]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
-    "ACTOR_NN_ARCHITECTURE": "[32]",
-    # "ACTOR_LEARNING_RATE": 1e-3,
+    "ACTOR_NN_ARCHITECTURE": "[64,32]",
     "ACTOR_DROPOUT": 0.0,
     "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
-    "CRITIC_NN_ARCHITECTURE": "[32]",
-    # "CRITIC_LEARNING_RATE": 1e-3,
+    "CRITIC_NN_ARCHITECTURE": "[64,32]",
     "CRITIC_DROPOUT": 0.0,
     "CRITIC_ACTIVATION_FUNCTION": "relu",
     # PATHS
@@ -49,6 +48,6 @@ config = {
     # Logging
     "logging": "wandb",
     # Normalization
-    "NORMALIZE": True,
+    "NORMALIZE": "standardize",
     "LEARNING_START": 1000,
 }

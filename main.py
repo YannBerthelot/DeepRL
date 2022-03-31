@@ -12,6 +12,7 @@ if __name__ == "__main__":
 
     # Init Gym env
     env = gym.make(config["ENVIRONMENT"])
+    config["name"] = "rl-zoo"
 
     config_0 = copy(config)
     config_0["name"] = "FC"
@@ -47,11 +48,11 @@ if __name__ == "__main__":
     config_3["CRITIC_NN_ARCHITECTURE"] = "[]"
     config_3["NORMALIZE"] = True
 
-    for i, config in enumerate([config_2, config_3]):
+    for i, config in enumerate([config]):
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             if config["logging"] == "wandb":
                 run = wandb.init(
-                    project="LunarLander-v2 A2C RNN normalized tests-4",
+                    project="LunarLander-v2 A2C RNN normalized tests-7",
                     entity="yann-berthelot",
                     name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                     reinit=True,
@@ -71,6 +72,6 @@ if __name__ == "__main__":
             agent.load(f"config {i} {experiment}_best")
 
             # Evaluate and render the policy
-            agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=False)
+            agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=True)
             if config["logging"] == "wandb":
                 run.finish()

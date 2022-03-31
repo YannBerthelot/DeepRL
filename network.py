@@ -211,6 +211,8 @@ class ActorCritic(nn.Module):
         self.writer = None
         self.index = 0
         self.hidden = None
+        self.old_probs = None
+        self.KLdiv = nn.KLDivLoss(reduction="batchmean")
 
     def select_action(self, observation: np.array, hidden: np.array) -> np.array:
         """Select the action based on the observation and the current parametrized policy
@@ -262,6 +264,11 @@ class ActorCritic(nn.Module):
             state,
             hidden,
         )
+        if self.old_probs is not None:
+            KL_divergence = self.KLdiv(probs, self.old_probs)
+        else:
+            KL_divergence = 0
+        self.old_probs = probs
         dist = torch.distributions.Categorical(probs=probs)
 
         # Entropy loss
@@ -282,7 +289,11 @@ class ActorCritic(nn.Module):
         # Update actor
         actor_loss = -dist.log_prob(t(np.array([action]))) * advantage.detach()
 
-        loss = actor_loss + self.config["VALUE_FACTOR"] * critic_loss
+        loss = (
+            actor_loss
+            + self.config["VALUE_FACTOR"] * critic_loss
+            + self.config["ENTROPY_FACTOR"] * entropy_loss
+        )
 
         self.optimizer.zero_grad()
         loss.mean().backward(retain_graph=True)
@@ -291,19 +302,21 @@ class ActorCritic(nn.Module):
         # Logging
         if self.writer:
             if self.config["logging"] == "tensorboard":
-                self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
-                self.writer.add_scalar("Loss/policy", actor_loss, self.index)
-                self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+                self.writer.add_scalar("Train/entropy loss", -entropy_loss, self.index)
+                self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
+                self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
+                self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
             wandb.log(
                 {
-                    "Loss/entropy": entropy_loss,
-                    "Loss/actor": actor_loss,
-                    "Loss/critic": critic_loss,
+                    "Train/entropy loss": entropy_loss,
+                    "Train/actor loss": actor_loss,
+                    "Train/critic loss": critic_loss,
+                    "Train/KL divergence": KL_divergence,
                 },
-                commit=True,
+                commit=False,
             )
 
     def get_action_probabilities(self, state: np.array) -> np.array:

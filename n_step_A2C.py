@@ -1,7 +1,7 @@
 # For type hinting only
 import gym
 from sklearn.preprocessing import MinMaxScaler
-from utils import SimpleMinMaxScaler
+from utils import SimpleMinMaxScaler, SimpleStandardizer
 import wandb
 
 # Base class for Agent
@@ -116,10 +116,14 @@ class A2C(Agent):
         self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
         self.network.to(self.network.device)
 
-        self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
-        self.reward_scaler = SimpleMinMaxScaler(
-            maxs=[100], mins=[-100], feature_range=(-1, 1)
-        )
+        if self.config["NORMALIZE"] == "standardize":
+            self.obs_scaler = SimpleStandardizer()
+            self.reward_scaler = SimpleStandardizer(shift_mean=False)
+        elif self.config["NORMALIZE"] == "normalize":
+            self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
+            self.reward_scaler = SimpleMinMaxScaler(
+                maxs=[100], mins=[-100], feature_range=(-1, 1)
+            )
 
         # For logging purpose
         self.network.writer = writer
@@ -158,10 +162,6 @@ class A2C(Agent):
         episode = 1
         t = 1
         t_old = 0
-        if self.recurrent:
-            hidden = self.network.get_initial_states()
-        else:
-            hidden = None
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
@@ -173,6 +173,10 @@ class A2C(Agent):
             # Init reward_sum and variables for the episode
             rewards = []
             done, obs = False, env.reset()
+            if self.recurrent:
+                hidden = self.network.get_initial_states()
+            else:
+                hidden = None
             # self.obs_scaler.partial_fit(obs.reshape(1, -1))
             # Loop through the episode
             while not done:
@@ -184,15 +188,14 @@ class A2C(Agent):
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
                 # Scaling
-                if self.config["NORMALIZE"]:
+                if self.config["NORMALIZE"] is not None:
                     if t < self.config["LEARNING_START"]:
-                        self.obs_scaler.partial_fit(next_obs.reshape(1, -1))
+                        self.obs_scaler.partial_fit(next_obs)
+                        self.reward_scaler.partial_fit(np.array([reward]))
                     # self.reward_scaler.partial_fit(np.array(reward).reshape(1, -1))
                     else:
-                        reward = self.reward_scaler.transform(reward)[0]
-                        next_obs = np.array(
-                            list(self.obs_scaler.transform(next_obs.reshape(1, -1))[0])
-                        )
+                        reward = self.reward_scaler.transform(np.array([reward]))[0]
+                        next_obs = self.obs_scaler.transform(next_obs)
 
                 # Add the experience collected to the memory for the n-step processing
                 if t >= self.config["LEARNING_START"]:
@@ -296,12 +299,13 @@ class A2C(Agent):
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
         episode_rewards = []
-        if self.recurrent:
-            hidden = self.network.get_initial_states()
-        else:
-            hidden = None
+
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
+            if self.recurrent:
+                hidden = self.network.get_initial_states()
+            else:
+                hidden = None
             # Init episode
             done = False
             obs = env.reset()
@@ -311,9 +315,7 @@ class A2C(Agent):
             while not done:
                 # Select the action using the current policy
                 if self.config["NORMALIZE"]:
-                    obs = np.array(
-                        list(self.obs_scaler.transform(obs.reshape(1, -1))[0])
-                    )
+                    obs = self.obs_scaler.transform(obs)
                 action, next_hidden = self.select_action(obs, hidden)
 
                 # Step the environment accordingly
