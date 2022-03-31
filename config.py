@@ -25,18 +25,18 @@ config = {
     # NETWORKS
     "RECURRENT": True,
     "LEARNING_RATE": 1e-4,
-    "TARGET_NETWORK_UPDATE": 10,
+    "TARGET_UPDATE": 100,
     # RNN
-    "HIDDEN_SIZE": 128,
+    "HIDDEN_SIZE": 64,
     "HIDDEN_LAYERS": 1,
-    "COMMON_NN_ARCHITECTURE": "[256]",
+    "COMMON_NN_ARCHITECTURE": "[64]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
-    "ACTOR_NN_ARCHITECTURE": "[64,32]",
+    "ACTOR_NN_ARCHITECTURE": "[32]",
     "ACTOR_DROPOUT": 0.0,
     "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
-    "CRITIC_NN_ARCHITECTURE": "[64,32]",
+    "CRITIC_NN_ARCHITECTURE": "[32]",
     "CRITIC_DROPOUT": 0.0,
     "CRITIC_ACTIVATION_FUNCTION": "relu",
     # PATHS
@@ -44,7 +44,7 @@ config = {
     "MODEL_PATH": "models",
     # Experiments
     "N_EXPERIMENTS": 3,
-    "EARLY_STOPPING_STEPS": 100000,
+    "EARLY_STOPPING_STEPS": 10000,
     # Logging
     "logging": "wandb",
     # Normalization
