@@ -1,5 +1,7 @@
 # For type hinting only
 import gym
+from sklearn.preprocessing import MinMaxScaler
+from utils import SimpleMinMaxScaler, SimpleStandardizer
 import wandb
 
 # Base class for Agent
@@ -100,7 +102,7 @@ class A2C(Agent):
         )
         # Initialize Tensorboard
         writer = SummaryWriter(log_dir=LOG_DIR)
-
+        self.comment = comment
         # Underlying Gym env
         self.env = env
         self.__name__ = "n-steps A2C"
@@ -113,6 +115,15 @@ class A2C(Agent):
         # Initialize the policy network with the right shape
         self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
         self.network.to(self.network.device)
+
+        if self.config["NORMALIZE"] == "standardize":
+            self.obs_scaler = SimpleStandardizer()
+            self.reward_scaler = SimpleStandardizer(shift_mean=False)
+        elif self.config["NORMALIZE"] == "normalize":
+            self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
+            self.reward_scaler = SimpleMinMaxScaler(
+                maxs=[100], mins=[-100], feature_range=(-1, 1)
+            )
 
         # For logging purpose
         self.network.writer = writer
@@ -151,10 +162,6 @@ class A2C(Agent):
         episode = 1
         t = 1
         t_old = 0
-        if self.recurrent:
-            hidden = self.network.get_initial_states()
-        else:
-            hidden = None
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
@@ -166,7 +173,11 @@ class A2C(Agent):
             # Init reward_sum and variables for the episode
             rewards = []
             done, obs = False, env.reset()
-
+            if self.recurrent:
+                hidden = self.network.get_initial_states()
+            else:
+                hidden = None
+            # self.obs_scaler.partial_fit(obs.reshape(1, -1))
             # Loop through the episode
             while not done:
 
@@ -176,32 +187,42 @@ class A2C(Agent):
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
+                # Scaling
+                if self.config["NORMALIZE"] is not None:
+                    if t < self.config["LEARNING_START"]:
+                        self.obs_scaler.partial_fit(next_obs)
+                        self.reward_scaler.partial_fit(np.array([reward]))
+                    # self.reward_scaler.partial_fit(np.array(reward).reshape(1, -1))
+                    else:
+                        reward = self.reward_scaler.transform(np.array([reward]))[0]
+                        next_obs = self.obs_scaler.transform(next_obs)
 
                 # Add the experience collected to the memory for the n-step processing
-                self.memory.add(obs, action, reward, done, hidden)
+                if t >= self.config["LEARNING_START"]:
+                    self.memory.add(obs, action, reward, done, hidden)
 
-                # When we have collected n steps we can start learning
-                if t >= self.config["N_STEPS"]:
-                    # Compute the n-steps return to be used as target and fetch the relevant information from the memory
-                    (
-                        n_step_return,
-                        old_obs,
-                        old_action,
-                        old_done,
-                        old_hidden,
-                    ) = self.memory.compute_return()
-                    # Run the n-step A2C update
-                    self.network.update_policy(
-                        old_obs,
-                        old_action,
-                        n_step_return,
-                        next_obs,
-                        old_hidden,
-                        hidden,
-                        done,
-                    )
-                    # Clear the used experience from the memory
-                    self.memory.remove_first_step()
+                    # When we have collected n steps we can start learning
+                    if t >= self.config["N_STEPS"]:
+                        # Compute the n-steps return to be used as target and fetch the relevant information from the memory
+                        (
+                            n_step_return,
+                            old_obs,
+                            old_action,
+                            old_done,
+                            old_hidden,
+                        ) = self.memory.compute_return()
+                        # Run the n-step A2C update
+                        self.network.update_policy(
+                            old_obs,
+                            old_action,
+                            n_step_return,
+                            next_obs,
+                            old_hidden,
+                            hidden,
+                            done,
+                        )
+                        # Clear the used experience from the memory
+                        self.memory.remove_first_step()
 
                 # Update timesteps counter, reward sum and move on to the next observation
                 t += 1
@@ -217,7 +238,7 @@ class A2C(Agent):
                 self.best_episode_reward = reward_sum
                 if self.config["logging"] == "wandb":
                     wandb.run.summary["Train/best reward sum"] = reward_sum
-                self.save("best")
+                self.save(f"{self.comment}_best")
             elif reward_sum == old_reward_sum:
                 constant_reward_counter += 1
                 if constant_reward_counter > self.config["EARLY_STOPPING_STEPS"]:
@@ -228,7 +249,14 @@ class A2C(Agent):
             old_reward_sum = reward_sum
             # Log performances in Tensorboard
             if self.config["logging"] == "wandb":
-                wandb.log({"Reward/Episode_sum_of_rewards": reward_sum})
+                wandb.log(
+                    {
+                        "Train/Episode_sum_of_rewards": reward_sum,
+                        "Train/Episode": episode,
+                    },
+                    step=t,
+                    commit=True,
+                )
             elif self.config["logging"] == "tensorboard":
                 self.network.writer.add_scalar(
                     "Reward/Episode_sum_of_rewards", reward_sum, episode
@@ -271,12 +299,13 @@ class A2C(Agent):
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
         episode_rewards = []
-        if self.recurrent:
-            hidden = self.network.get_initial_states()
-        else:
-            hidden = None
+
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
+            if self.recurrent:
+                hidden = self.network.get_initial_states()
+            else:
+                hidden = None
             # Init episode
             done = False
             obs = env.reset()
@@ -285,6 +314,8 @@ class A2C(Agent):
             # Generate episode
             while not done:
                 # Select the action using the current policy
+                if self.config["NORMALIZE"]:
+                    obs = self.obs_scaler.transform(obs)
                 action, next_hidden = self.select_action(obs, hidden)
 
                 # Step the environment accordingly
@@ -303,7 +334,9 @@ class A2C(Agent):
 
             # Logging
             if self.config["logging"] == "wandb":
-                wandb.log({"Test/reward": rewards_sum, "Test/episode": episode})
+                wandb.log(
+                    {"Test/reward": rewards_sum, "Test/episode": episode}, commit=True
+                )
             elif self.config["logging"] == "tensorboard":
                 self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
             # print(f"test number {episode} : {rewards_sum}")
