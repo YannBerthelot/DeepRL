@@ -8,26 +8,6 @@ def t(x):
 
 
 def get_network_from_architecture(
-    input_shape: int,
-    output_shape: int,
-    architecture: List[int],
-    activation_function: str,
-    mode: str = "actor",
-    type: str = "fc",
-) -> torch.nn.modules.container.Sequential:
-    if type == "fc":
-        return get_fc_network_from_architecture(
-            input_shape, output_shape, architecture, activation_function, mode
-        )
-    elif type == "rnn":
-        return get_rnn_network_from_architecture(
-            input_shape, output_shape, architecture, activation_function, mode
-        )
-    else:
-        raise ValueError(f"Network type {type} not recognized")
-
-
-def get_fc_network_from_architecture(
     input_shape,
     output_shape,
     architecture: List[int],

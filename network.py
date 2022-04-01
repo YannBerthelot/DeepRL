@@ -195,6 +195,15 @@ class ActorCritic(nn.Module):
             self.config["HIDDEN_LAYERS"],
             self.config,
         )
+        self.actorcritic_target = ActorCriticRecurrentNetworks(
+            observation_shape[0],
+            action_shape,
+            self.config["HIDDEN_SIZE"],
+            self.config["HIDDEN_LAYERS"],
+            self.config,
+        )
+        self.actorcritic_target.load_state_dict(self.actorcritic.state_dict())
+        self.actorcritic_target.eval()
         print(self.actorcritic)
         if self.config["logging"] == "wandb":
             wandb.watch(self.actorcritic)
@@ -211,6 +220,8 @@ class ActorCritic(nn.Module):
         self.writer = None
         self.index = 0
         self.hidden = None
+        self.old_probs = None
+        self.KLdiv = nn.KLDivLoss(reduction="batchmean")
 
     def select_action(self, observation: np.array, hidden: np.array) -> np.array:
         """Select the action based on the observation and the current parametrized policy
@@ -221,12 +232,13 @@ class ActorCritic(nn.Module):
         Returns:
             np.array : The selected action(s)
         """
-        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
-            :, None, :
-        ]
-        probs, hidden = self.actorcritic.actor(observation, hidden)
-        dist = torch.distributions.Categorical(probs=probs)
-        action = dist.sample()
+        with torch.no_grad():
+            observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
+                :, None, :
+            ]
+            probs, hidden = self.actorcritic_target.actor(observation, hidden)
+            dist = torch.distributions.Categorical(probs=probs)
+            action = dist.sample()
         return action.detach().data.numpy()[0, 0], hidden
 
     def update_policy(
@@ -262,6 +274,11 @@ class ActorCritic(nn.Module):
             state,
             hidden,
         )
+        if self.old_probs is not None:
+            KL_divergence = self.KLdiv(probs, self.old_probs)
+        else:
+            KL_divergence = 0
+        self.old_probs = probs
         dist = torch.distributions.Categorical(probs=probs)
 
         # Entropy loss
@@ -282,24 +299,36 @@ class ActorCritic(nn.Module):
         # Update actor
         actor_loss = -dist.log_prob(t(np.array([action]))) * advantage.detach()
 
-        loss = actor_loss + self.config["VALUE_FACTOR"] * critic_loss
+        loss = (
+            actor_loss
+            + self.config["VALUE_FACTOR"] * critic_loss
+            + self.config["ENTROPY_FACTOR"] * entropy_loss
+        )
 
         self.optimizer.zero_grad()
         loss.mean().backward(retain_graph=True)
         self.optimizer.step()
-
+        if self.index % self.config["TARGET_UPDATE"] == 0:
+            self.actorcritic_target.load_state_dict(self.actorcritic.state_dict())
         # Logging
         if self.writer:
             if self.config["logging"] == "tensorboard":
-                self.writer.add_scalar("Loss/entropy", entropy_loss, self.index)
-                self.writer.add_scalar("Loss/policy", actor_loss, self.index)
-                self.writer.add_scalar("Loss/critic", critic_loss, self.index)
+                self.writer.add_scalar("Train/entropy loss", -entropy_loss, self.index)
+                self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
+                self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
+                self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
-            wandb.log({"Loss/entropy": entropy_loss})
-            wandb.log({"Loss/actor": actor_loss})
-            wandb.log({"Loss/critic": critic_loss})
+            wandb.log(
+                {
+                    "Train/entropy loss": -entropy_loss,
+                    "Train/actor loss": actor_loss,
+                    "Train/critic loss": critic_loss,
+                    "Train/KL divergence": KL_divergence,
+                },
+                commit=False,
+            )
 
     def get_action_probabilities(self, state: np.array) -> np.array:
         """
@@ -347,6 +376,7 @@ class ActorCritic(nn.Module):
         """
         print("Loading")
         self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
+        print(self.actorcritic)
 
     def get_initial_states(self):
         h_0, c_0 = None, None
