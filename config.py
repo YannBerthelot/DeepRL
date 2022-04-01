@@ -25,7 +25,7 @@ config = {
     # NETWORKS
     "RECURRENT": True,
     "LEARNING_RATE": 1e-4,
-    "TARGET_UPDATE": 100,
+    "TARGET_UPDATE": 64,
     # RNN
     "HIDDEN_SIZE": 64,
     "HIDDEN_LAYERS": 1,
