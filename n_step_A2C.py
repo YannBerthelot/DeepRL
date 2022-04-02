@@ -1,5 +1,8 @@
 # For type hinting only
+import os
+import pickle
 import gym
+import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from utils import SimpleMinMaxScaler, SimpleStandardizer
 import wandb
@@ -92,7 +95,7 @@ class Memory:
 
 
 class A2C(Agent):
-    def __init__(self, env: gym.Env, config: dict, comment: str = "") -> None:
+    def __init__(self, env: gym.Env, config: dict, comment: str = "", run=None) -> None:
         super(Agent, self).__init__()
 
         # current_time = now.strftime("%H:%M")
@@ -100,6 +103,7 @@ class A2C(Agent):
         LOG_DIR = (
             f'{config["TENSORBOARD_PATH"]}/{config["ENVIRONMENT"]}/{today}/{comment}'
         )
+        os.makedirs(config["MODEL_PATH"], exist_ok=True)
         # Initialize Tensorboard
         writer = SummaryWriter(log_dir=LOG_DIR)
         self.comment = comment
@@ -115,6 +119,7 @@ class A2C(Agent):
         # Initialize the policy network with the right shape
         self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
         self.network.to(self.network.device)
+        self.run = run
 
         if self.config["NORMALIZE"] == "standardize":
             self.obs_scaler = SimpleStandardizer()
@@ -127,7 +132,7 @@ class A2C(Agent):
 
         # For logging purpose
         self.network.writer = writer
-        self.best_episode_reward = 0
+        self.best_episode_reward = -np.inf
 
     def select_action(
         self, observation: np.array, hidden: np.array, testing: bool = False
@@ -165,8 +170,10 @@ class A2C(Agent):
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
+        action_list = []
 
         while t <= nb_timestep:
+            action_list_episode = []
             pbar.update(t - t_old)
             t_old = t
 
@@ -180,9 +187,9 @@ class A2C(Agent):
             # self.obs_scaler.partial_fit(obs.reshape(1, -1))
             # Loop through the episode
             while not done:
-
                 # Select the action using the actor network
                 action, next_hidden = self.select_action(obs, hidden)
+                action_list_episode.append(action)
 
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
@@ -232,7 +239,6 @@ class A2C(Agent):
             # Clear memory to start a new episode
             self.memory.clear()
             reward_sum = np.sum(rewards)
-
             # Track best model and save it
             if reward_sum > self.best_episode_reward:
                 self.best_episode_reward = reward_sum
@@ -253,6 +259,7 @@ class A2C(Agent):
                     {
                         "Train/Episode_sum_of_rewards": reward_sum,
                         "Train/Episode": episode,
+                        "Actions": wandb.Histogram(action_list_episode),
                     },
                     step=t,
                     commit=True,
@@ -276,6 +283,7 @@ class A2C(Agent):
                 )
             # Next episode
             episode += 1
+            action_list.extend(action_list_episode)
         if self.config["logging"] == "tensorboard":
             self.network.writer.add_hparams(
                 self.config,
@@ -287,9 +295,39 @@ class A2C(Agent):
                 },
                 run_name="test",
             )
+        action_frequency = (
+            pd.Series(action_list).value_counts().values.reshape(-1, 1).tolist()
+        )
+        data = action_frequency
+        table = wandb.Table(data=data, columns=["actions"])
+        wandb.log(
+            {
+                "Action distribution": wandb.plot.histogram(
+                    table, "actions", title="Action selection distribution"
+                )
+            }
+        )
         pbar.close()
+        artifact = wandb.Artifact(f"{self.comment}_best", type="model")
 
-    def test(self, env: gym.Env, nb_episodes: int, render: bool = False) -> None:
+        # Add a file to the artifact's contents
+        artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
+
+        # Save the artifact version to W&B and mark it as the output of this run
+        self.run.log_artifact(artifact)
+
+        artifact = wandb.Artifact(f"{self.comment}_obs_scaler", type="scaler")
+
+        # Add a file to the artifact's contents
+        pickle.dump(self.obs_scaler, open(f"data/{self.comment}_obs_scaler.pkl", "wb"))
+        artifact.add_file(f"data/{self.comment}_obs_scaler.pkl")
+
+        # Save the artifact version to W&B and mark it as the output of this run
+        self.run.log_artifact(artifact)
+
+    def test(
+        self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None
+    ) -> None:
         """
         Test the current policy to evalute its performance
 
@@ -298,8 +336,12 @@ class A2C(Agent):
             nb_episodes (int): Number of test episodes
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
+        if scaler_file is not None:
+            with open(scaler_file, "rb") as input_file:
+                scaler = pickle.load(input_file)
+            self.obs_scaler = scaler
         episode_rewards = []
-
+        best_test_episode_reward = 0
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
             if self.recurrent:
@@ -332,6 +374,10 @@ class A2C(Agent):
                 obs = next_obs
                 hidden = next_hidden
 
+            if rewards_sum > best_test_episode_reward:
+                best_test_episode_reward = rewards_sum
+                if self.config["logging"] == "wandb":
+                    wandb.run.summary["Test/best reward sum"] = rewards_sum
             # Logging
             if self.config["logging"] == "wandb":
                 wandb.log(

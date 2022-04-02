@@ -15,17 +15,17 @@ config = {
     # AGENT INFO
     # General
     "AGENT": "n-steps A2C",
-    "GAMMA": 0.99,
+    "GAMMA": 1.0,
     "NB_TIMESTEPS_TRAIN": 2e5,
     "NB_EPISODES_TEST": 50,
     "VALUE_FACTOR": 0.5,
-    "ENTROPY_FACTOR": 0.005,
+    "ENTROPY_FACTOR": 1e-5,
     # Specific
     "N_STEPS": 5,
     # NETWORKS
     "RECURRENT": True,
-    "LEARNING_RATE": 1e-4,
-    "TARGET_UPDATE": 64,
+    "LEARNING_RATE": 2e-5,
+    "TARGET_UPDATE": 1,
     # RNN
     "HIDDEN_SIZE": 64,
     "HIDDEN_LAYERS": 1,

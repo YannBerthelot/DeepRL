@@ -36,5 +36,8 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 - [x] Add normalization and standardization of states and rewards
 - [ ] Add normalization and standardization of target
 - [x] Add entropy
-- [ ] Add tests
-- [ ] Add policy and target networks
+- [ ] Add tests (cf : https://andyljones.com/posts/rl-debugging.html)
+- [x] Add policy and target networks
+- [ ] Add scheduler for learning rate (or other parameters)
+- [ ] Add explained variance to the KPIs
+- [ ] Package the code into a Python lib
