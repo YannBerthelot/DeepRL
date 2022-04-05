@@ -33,7 +33,7 @@ if __name__ == "__main__":
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             if config["logging"] == "wandb":
                 run = wandb.init(
-                    project="LunarLander-v2 A2C RNN normalized tests-9",
+                    project="LunarLander-v2 A2C RNN normalized tests-10",
                     entity="yann-berthelot",
                     name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                     reinit=True,

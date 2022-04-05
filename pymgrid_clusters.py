@@ -5,24 +5,28 @@ from pymgrid_utils import get_environments_for_cluster
 from pymgrid_config import pymgrid_config
 
 config["name"] = "pymgrid"
-baseline_model = "pymgrid_baseline"
+baseline_model = "config_pymgrid_5_best"
+
 
 N_CLUSTERS = 10
-for cluster in range(N_CLUSTERS):
+for cluster in range(1, N_CLUSTERS):
     mg_env_train, mg_env_eval = get_environments_for_cluster(
-        cluster, pv_factor=config["pv_factor"], action_design=config["action_design"]
+        cluster,
+        pv_factor=pymgrid_config["pv_factor"],
+        action_design=pymgrid_config["action_design"],
     )
     config["CLUSTER"] = cluster
+    config_global = {**config, **pymgrid_config}
 
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if experiment == 1:
             config["BASELINE"] = True
             run = wandb.init(
-                project="Pymgrid 2 clusters",
+                project="Pymgrid 2 clusters pv_factor2",
                 entity="yann-berthelot",
                 name=f"cluster_{cluster}_baseline",
                 reinit=True,
-                config=config,
+                config=config_global,
             )
             agent = A2C(
                 mg_env_eval,
@@ -36,13 +40,13 @@ for cluster in range(N_CLUSTERS):
                 mg_env_eval,
                 nb_episodes=config["NB_EPISODES_TEST"],
                 render=False,
-                scaler_file="data/baseline_pymgrid_1_obs_scaler.pkl",
+                scaler_file="data/baseline_pymgrid_5_obs_scaler.pkl",
             )
             if config["logging"] == "wandb":
                 run.finish()
         config["BASELINE"] = False
         run = wandb.init(
-            project="Pymgrid 2 clusters",
+            project="Pymgrid 2 clusters pv_factor2",
             entity="yann-berthelot",
             name=f'Cluster {cluster} {experiment}/{config["N_EXPERIMENTS"]}',
             reinit=True,
