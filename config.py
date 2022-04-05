@@ -46,7 +46,7 @@ config = {
     "N_EXPERIMENTS": 3,
     "EARLY_STOPPING_STEPS": 10000,
     # Logging
-    "logging": "wandb",
+    "logging": "tensorboard",
     # Normalization
     "NORMALIZE": "standardize",
     "LEARNING_START": 1000,

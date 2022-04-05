@@ -59,6 +59,6 @@ class SimpleStandardizer:
         else:
             new_value = value / self.std
         if self.clip:
-            return min(max(new_value, self.clipping_range[0]), self.clipping_range[1])
+            return np.clip(new_value, self.clipping_range[0], self.clipping_range[1])
         else:
             return new_value

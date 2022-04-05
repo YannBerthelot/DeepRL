@@ -116,19 +116,23 @@ class A2C(Agent):
         self.action_shape = env.action_space.n
         self.config = config
         self.recurrent = self.config["RECURRENT"]
-        # Initialize the policy network with the right shape
-        self.network = ActorCritic(self.obs_shape, self.action_shape, config=config)
-        self.network.to(self.network.device)
-        self.run = run
 
         if self.config["NORMALIZE"] == "standardize":
-            self.obs_scaler = SimpleStandardizer()
-            self.reward_scaler = SimpleStandardizer(shift_mean=False)
+            self.obs_scaler = SimpleStandardizer(clip=True)
+            self.reward_scaler = SimpleStandardizer(shift_mean=False, clip=True)
+            self.target_scaler = SimpleStandardizer(shift_mean=True, clip=True)
         elif self.config["NORMALIZE"] == "normalize":
             self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
             self.reward_scaler = SimpleMinMaxScaler(
                 maxs=[100], mins=[-100], feature_range=(-1, 1)
             )
+
+        # Initialize the policy network with the right shape
+        self.network = ActorCritic(
+            self.obs_shape, self.action_shape, config=config, scaler=self.target_scaler
+        )
+        self.network.to(self.network.device)
+        self.run = run
 
         # For logging purpose
         self.network.writer = writer
@@ -299,31 +303,35 @@ class A2C(Agent):
             pd.Series(action_list).value_counts().values.reshape(-1, 1).tolist()
         )
         data = action_frequency
-        table = wandb.Table(data=data, columns=["actions"])
-        wandb.log(
-            {
-                "Action distribution": wandb.plot.histogram(
-                    table, "actions", title="Action selection distribution"
-                )
-            }
-        )
         pbar.close()
-        artifact = wandb.Artifact(f"{self.comment}_best", type="model")
+        if self.config["logging"] == "wandb":
+            table = wandb.Table(data=data, columns=["actions"])
+            wandb.log(
+                {
+                    "Action distribution": wandb.plot.histogram(
+                        table, "actions", title="Action selection distribution"
+                    )
+                }
+            )
 
-        # Add a file to the artifact's contents
-        artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
+            artifact = wandb.Artifact(f"{self.comment}_best", type="model")
 
-        # Save the artifact version to W&B and mark it as the output of this run
-        self.run.log_artifact(artifact)
+            # Add a file to the artifact's contents
+            artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
 
-        artifact = wandb.Artifact(f"{self.comment}_obs_scaler", type="scaler")
+            # Save the artifact version to W&B and mark it as the output of this run
+            self.run.log_artifact(artifact)
 
-        # Add a file to the artifact's contents
-        pickle.dump(self.obs_scaler, open(f"data/{self.comment}_obs_scaler.pkl", "wb"))
-        artifact.add_file(f"data/{self.comment}_obs_scaler.pkl")
+            artifact = wandb.Artifact(f"{self.comment}_obs_scaler", type="scaler")
 
-        # Save the artifact version to W&B and mark it as the output of this run
-        self.run.log_artifact(artifact)
+            # Add a file to the artifact's contents
+            pickle.dump(
+                self.obs_scaler, open(f"data/{self.comment}_obs_scaler.pkl", "wb")
+            )
+            artifact.add_file(f"data/{self.comment}_obs_scaler.pkl")
+
+            # Save the artifact version to W&B and mark it as the output of this run
+            self.run.log_artifact(artifact)
 
     def test(
         self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None

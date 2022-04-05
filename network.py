@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 # Network creator tool
 from network_utils import get_network_from_architecture, t
+from utils import SimpleStandardizer
 
 # Numpy
 import numpy as np
@@ -177,9 +178,10 @@ class ActorCriticRecurrentNetworks(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, observation_shape, action_shape, config):
+    def __init__(self, observation_shape, action_shape, config, scaler=None):
         super(ActorCritic, self).__init__()
         self.config = config
+        self.scaler = scaler
         # Set the Torch device
         if config["DEVICE"] == "GPU":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -214,6 +216,8 @@ class ActorCritic(nn.Module):
             lr=config["LEARNING_RATE"],
         )
 
+        self.target_var_scaler = SimpleStandardizer()
+        self.advantages_var_scaler = SimpleStandardizer()
         # Init stuff
         self.loss = None
         self.epoch = 0
@@ -222,6 +226,8 @@ class ActorCritic(nn.Module):
         self.hidden = None
         self.old_probs = None
         self.KLdiv = nn.KLDivLoss(reduction="batchmean")
+        self.advantages = []
+        self.targets = []
 
     def select_action(self, observation: np.array, hidden: np.array) -> np.array:
         """Select the action based on the observation and the current parametrized policy
@@ -284,14 +290,29 @@ class ActorCritic(nn.Module):
         # Entropy loss
         entropy_loss = -dist.entropy()
 
-        # Critic loss
-        advantage = (
+        empirical_return = (
             n_step_return
             + (1 - done)
             * self.config["GAMMA"] ** self.config["N_STEPS"]
-            * self.actorcritic.critic(next_state, next_hidden)
-            - self.actorcritic.critic(state, hidden)
-        )
+            * self.actorcritic.critic(next_state, next_hidden)[0]
+        )[0]
+
+        estimated_return = self.actorcritic.critic(state, hidden)
+        if self.scaler is not None:
+            numpy_return = empirical_return.detach().numpy()
+            self.scaler.partial_fit(numpy_return)
+            if self.index > 2:
+                empirical_return = t(self.scaler.transform(numpy_return))
+        # Critic loss
+        advantage = empirical_return - estimated_return
+        self.target_var_scaler.partial_fit(empirical_return.detach().numpy())
+        self.advantages_var_scaler.partial_fit(advantage.detach().numpy()[0][0])
+        var_targets = self.target_var_scaler.std
+        var_advantages = self.advantages_var_scaler.std
+        if var_targets == 0:
+            explained_variance = 0
+        else:
+            explained_variance = 1 - var_advantages / var_targets
 
         # Update critic
         critic_loss = advantage.pow(2).mean()
@@ -317,6 +338,9 @@ class ActorCritic(nn.Module):
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
                 self.writer.add_scalar("Train/total loss", loss, self.index)
+                self.writer.add_scalar(
+                    "Train/explained variance", explained_variance, self.index
+                )
                 self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
@@ -327,6 +351,7 @@ class ActorCritic(nn.Module):
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
                     "Train/total loss": loss,
+                    "Train/explained variance": explained_variance,
                     "Train/KL divergence": KL_divergence,
                 },
                 commit=False,

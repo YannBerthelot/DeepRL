@@ -4,6 +4,7 @@ import gym
 from n_step_A2C import A2C
 from config import config
 from copy import copy
+import cProfile
 
 if __name__ == "__main__":
     # Init folder for model saves
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     config_3["name"] = "Target network"
     config_3["TARGET_UPDATE"] = 1024
 
-    for i, config in enumerate([config_0, config_1, config_2, config_3]):
+    for i, config in enumerate([config_0]):
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             if config["logging"] == "wandb":
                 run = wandb.init(
@@ -43,9 +44,8 @@ if __name__ == "__main__":
             agent = A2C(
                 env,
                 config=config,
-                comment=f"config {i} {experiment}",
+                comment=f"config {i} {experiment} mean shift",
             )
-
             # Train the agent
             agent.train(env, config["NB_TIMESTEPS_TRAIN"])
 
@@ -54,5 +54,6 @@ if __name__ == "__main__":
 
             # Evaluate and render the policy
             agent.test(env, nb_episodes=config["NB_EPISODES_TEST"], render=True)
+
             if config["logging"] == "wandb":
                 run.finish()
