@@ -275,7 +275,7 @@ class ActorCritic(nn.Module):
             hidden,
         )
         if self.old_probs is not None:
-            KL_divergence = self.KLdiv(probs, self.old_probs)
+            KL_divergence = self.KLdiv(self.old_probs, probs)
         else:
             KL_divergence = 0
         self.old_probs = probs
@@ -316,6 +316,7 @@ class ActorCritic(nn.Module):
                 self.writer.add_scalar("Train/entropy loss", -entropy_loss, self.index)
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
+                self.writer.add_scalar("Train/total loss", loss, self.index)
                 self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
@@ -325,6 +326,7 @@ class ActorCritic(nn.Module):
                     "Train/entropy loss": -entropy_loss,
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
+                    "Train/total loss": loss,
                     "Train/KL divergence": KL_divergence,
                 },
                 commit=False,
@@ -377,6 +379,7 @@ class ActorCritic(nn.Module):
         print("Loading")
         self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
         print(self.actorcritic)
+        self.actorcritic_target = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
 
     def get_initial_states(self):
         h_0, c_0 = None, None
