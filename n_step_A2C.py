@@ -120,7 +120,7 @@ class A2C(Agent):
         if self.config["NORMALIZE"] == "standardize":
             self.obs_scaler = SimpleStandardizer(clip=True)
             self.reward_scaler = SimpleStandardizer(shift_mean=False, clip=True)
-            self.target_scaler = SimpleStandardizer(shift_mean=True, clip=True)
+            self.target_scaler = SimpleStandardizer(shift_mean=False, clip=True)
         elif self.config["NORMALIZE"] == "normalize":
             self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
             self.reward_scaler = SimpleMinMaxScaler(

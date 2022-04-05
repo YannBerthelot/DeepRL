@@ -18,23 +18,11 @@ if __name__ == "__main__":
     config_0["name"] = "No target network"
     config_0["TARGET_UPDATE"] = 1
 
-    config_1 = copy(config)
-    config_1["name"] = "Target network"
-    config_1["TARGET_UPDATE"] = 16
-
-    config_2 = copy(config)
-    config_2["name"] = "Target network"
-    config_2["TARGET_UPDATE"] = 128
-
-    config_3 = copy(config)
-    config_3["name"] = "Target network"
-    config_3["TARGET_UPDATE"] = 1024
-
     for i, config in enumerate([config_0]):
         for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             if config["logging"] == "wandb":
                 run = wandb.init(
-                    project="LunarLander-v2 A2C RNN normalized tests-9",
+                    project="LunarLander-v2 A2C RNN target normalization tests",
                     entity="yann-berthelot",
                     name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                     reinit=True,
@@ -44,7 +32,7 @@ if __name__ == "__main__":
             agent = A2C(
                 env,
                 config=config,
-                comment=f"config {i} {experiment} mean shift",
+                comment=f"config {i} {experiment}",
             )
             # Train the agent
             agent.train(env, config["NB_TIMESTEPS_TRAIN"])
