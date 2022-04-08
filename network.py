@@ -8,13 +8,15 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 # Network creator tool
-from network_utils import get_network_from_architecture, t
+from network_utils import get_network_from_architecture, t, compute_KL_divergence
 from utils import SimpleStandardizer
 
 # Numpy
 import numpy as np
 
 import wandb
+
+ZERO = 1e-7
 
 
 class ActorCriticRecurrentNetworks(nn.Module):
@@ -55,13 +57,19 @@ class ActorCriticRecurrentNetworks(nn.Module):
         self.config = config
         self.action_dim = action_dim
         self.recurrent = self.config["RECURRENT"]
+        self.continuous = self.config["CONTINUOUS"]
         common_architecture = eval(config["COMMON_NN_ARCHITECTURE"])
         actor_architecture = eval(config["ACTOR_NN_ARCHITECTURE"])
         critic_architecture = eval(config["CRITIC_NN_ARCHITECTURE"])
-
         # Device to run computations on
         self.device = "CPU"
-
+        if self.continuous:
+            if self.config["LAW"] == "beta":
+                final_activation = "relu"
+            elif self.config["LAW"] == "normal":
+                final_activation = "tanh"
+        else:
+            final_activation = None
         if self.recurrent:
             # LSTM cell(s)
             self.recurrent_layer = nn.LSTM(
@@ -82,15 +90,16 @@ class ActorCriticRecurrentNetworks(nn.Module):
 
             # Layers after the LSTM specific to the actor
             self.actor_layers = get_network_from_architecture(
-                config["HIDDEN_SIZE"],
+                common_architecture[-1],
                 action_dim,
                 actor_architecture,
                 config["ACTOR_ACTIVATION_FUNCTION"],
                 mode="actor",
+                final_activation=final_activation,
             )
             # Layers after the LSTM specific to the critic
             self.critic_layers = get_network_from_architecture(
-                config["HIDDEN_SIZE"],
+                common_architecture[-1],
                 1,
                 critic_architecture,
                 config["CRITIC_ACTIVATION_FUNCTION"],
@@ -112,6 +121,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 action_dim,
                 actor_architecture,
                 config["ACTOR_ACTIVATION_FUNCTION"],
+                mode="actor",
             )
             # Layers after the LSTM specific to the critic
             self.critic_layers = get_network_from_architecture(
@@ -119,7 +129,11 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 1,
                 critic_architecture,
                 config["CRITIC_ACTIVATION_FUNCTION"],
+                mode="critic",
             )
+        if self.continuous:
+            logstds_param = nn.Parameter(torch.full((action_dim,), 0.1))
+            self.register_parameter("logstds", logstds_param)
 
     def forward(
         self, state: torch.Tensor, hidden: torch.Tensor
@@ -158,8 +172,20 @@ class ActorCriticRecurrentNetworks(nn.Module):
         """
         x, hidden = self.forward(state, hidden)
         x = self.actor_layers(x)
-        probs = F.softmax(x, dim=2)
-        return probs, hidden
+        if self.continuous:
+            stds = torch.clamp(self.logstds.exp(), 1e-3, 0.1)
+            if self.config["LAW"] == "normal":
+                return (
+                    torch.distributions.Normal(x, stds),
+                    hidden,
+                )
+            elif self.config["LAW"] == "beta":
+                return torch.distributions.Beta(x + ZERO, stds + ZERO), hidden
+            else:
+                raise ValueError(f'Unknown law {self.config["LAW"]}')
+        else:
+            dist = torch.distributions.Categorical(probs=x)
+            return dist, hidden
 
     def critic(self, state: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
         """
@@ -173,15 +199,17 @@ class ActorCriticRecurrentNetworks(nn.Module):
             torch.Tensor: A tuple containing the state value and the new hidden state
         """
         x, hidden = self.forward(state, hidden)
-        values = self.critic_layers(x)
-        return values
+        value = self.critic_layers(x)
+        return value.reshape(-1, 1)
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, observation_shape, action_shape, config, scaler=None):
+    def __init__(self, observation_shape, action_shape, config, scaler=None, env=None):
         super(ActorCritic, self).__init__()
         self.config = config
         self.scaler = scaler
+        self.env = env
+        self.continuous = config["CONTINUOUS"]
         # Set the Torch device
         if config["DEVICE"] == "GPU":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -215,6 +243,14 @@ class ActorCritic(nn.Module):
             self.actorcritic.parameters(),
             lr=config["LEARNING_RATE"],
         )
+        self.optimizer_actor = optim.Adam(
+            self.actorcritic.actor_layers.parameters(),
+            lr=config["LEARNING_RATE"],
+        )
+        self.optimizer_critic = optim.Adam(
+            self.actorcritic.critic_layers.parameters(),
+            lr=config["LEARNING_RATE"],
+        )
 
         self.target_var_scaler = SimpleStandardizer()
         self.advantages_var_scaler = SimpleStandardizer()
@@ -225,6 +261,7 @@ class ActorCritic(nn.Module):
         self.index = 0
         self.hidden = None
         self.old_probs = None
+        self.old_dist = None
         self.KLdiv = nn.KLDivLoss(reduction="batchmean")
         self.advantages = []
         self.targets = []
@@ -238,14 +275,31 @@ class ActorCritic(nn.Module):
         Returns:
             np.array : The selected action(s)
         """
-        with torch.no_grad():
-            observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
-                :, None, :
-            ]
-            probs, hidden = self.actorcritic_target.actor(observation, hidden)
-            dist = torch.distributions.Categorical(probs=probs)
-            action = dist.sample()
-        return action.detach().data.numpy()[0, 0], hidden
+
+        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
+            :, None, :
+        ]
+        dist, hidden = self.actorcritic_target.actor(observation, hidden)
+        action = dist.sample()
+        if self.continuous:
+            if self.config["LAW"] == "normal":
+                # action = (
+                #     action
+                #     * (self.env.action_space.high - self.env.action_space.low)
+                #     + self.env.action_space.low
+                # )
+                action = np.clip(
+                    action, self.env.action_space.low, self.env.action_space.high
+                )
+            elif self.config["LAW"] == "beta":
+                action = (
+                    action * (self.env.action_space.high - self.env.action_space.low)
+                    + self.env.action_space.low
+                )
+            return action.detach().data.numpy()[0][0], hidden
+        else:
+            action = action.reshape(-1, 1)
+            return action.item(), hidden
 
     def update_policy(
         self,
@@ -272,53 +326,41 @@ class ActorCritic(nn.Module):
         # For logging purposes
         self.index += 1
 
-        ## Compute the losses
-        # Actor loss
         state = t(state).reshape(1, -1)[:, None, :]
         next_state = t(next_state).reshape(1, -1)[:, None, :]
-        probs, _ = self.actorcritic.actor(
+        dist, hidden = self.actorcritic.actor(
             state,
             hidden,
         )
-        if self.old_probs is not None:
-            KL_divergence = self.KLdiv(self.old_probs, probs)
-        else:
-            KL_divergence = 0
-        self.old_probs = probs
-        dist = torch.distributions.Categorical(probs=probs)
+        if self.config["LAW"] == "beta":
+            # minmax scaling to fit into (0,1)
+            action = (action - self.env.action_space.low) / (
+                self.env.action_space.high - self.env.action_space.low
+            ) + ZERO
 
-        # Entropy loss
-        entropy_loss = -dist.entropy()
+        log_probs = dist.log_prob(t(np.array([action])))
 
-        empirical_return = (
-            n_step_return
-            + (1 - done)
-            * self.config["GAMMA"] ** self.config["N_STEPS"]
-            * self.actorcritic.critic(next_state, next_hidden)[0]
-        )[0]
-
+        empirical_return = n_step_return + (1 - done) * self.config[
+            "GAMMA"
+        ] ** self.config["N_STEPS"] * self.actorcritic.critic(next_state, next_hidden)
         estimated_return = self.actorcritic.critic(state, hidden)
-        if self.scaler is not None:
-            numpy_return = empirical_return.detach().numpy()
-            self.scaler.partial_fit(numpy_return)
-            if self.index > 2:
-                empirical_return = t(self.scaler.transform(numpy_return))
-        # Critic loss
+
+        # Target scaling
+        if (
+            (self.scaler is not None)
+            and (self.config["TARGET_SCALING"])
+            and self.index > 2
+        ):
+            empirical_return = self.fit_transform(
+                empirical_return.detach().numpy().flatten()
+            )
+
         advantage = empirical_return - estimated_return
-        self.target_var_scaler.partial_fit(empirical_return.detach().numpy())
-        self.advantages_var_scaler.partial_fit(advantage.detach().numpy()[0][0])
-        var_targets = self.target_var_scaler.std
-        var_advantages = self.advantages_var_scaler.std
-        if var_targets == 0:
-            explained_variance = 0
-        else:
-            explained_variance = 1 - var_advantages / var_targets
 
-        # Update critic
-        critic_loss = advantage.pow(2).mean()
-
-        # Update actor
-        actor_loss = -dist.log_prob(t(np.array([action]))) * advantage.detach()
+        # Losses
+        critic_loss = advantage.pow(2)
+        actor_loss = -log_probs * advantage.detach()
+        entropy_loss = -dist.entropy().mean()
 
         loss = (
             actor_loss
@@ -327,8 +369,18 @@ class ActorCritic(nn.Module):
         )
 
         self.optimizer.zero_grad()
-        loss.mean().backward(retain_graph=True)
+        loss.backward(retain_graph=True)
+        # self.gradient_clipping()
         self.optimizer.step()
+
+        # KPIs
+        explained_variance = self.compute_explained_variance(
+            empirical_return.detach().numpy().flatten(),
+            advantage.detach().numpy().flatten(),
+        )
+        KL_divergence = compute_KL_divergence(self.old_dist, dist)
+        self.old_dist = dist
+
         if self.index % self.config["TARGET_UPDATE"] == 0:
             self.actorcritic_target.load_state_dict(self.actorcritic.state_dict())
         # Logging
@@ -403,8 +455,12 @@ class ActorCritic(nn.Module):
         """
         print("Loading")
         self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
-        print(self.actorcritic)
+        self.actorcritic.config = self.config
+
         self.actorcritic_target = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
+        self.actorcritic_target.config = self.config
+
+        print(self.actorcritic)
 
     def get_initial_states(self):
         h_0, c_0 = None, None
@@ -429,3 +485,28 @@ class ActorCritic(nn.Module):
         )
         c_0 = c_0.to(device=self.device)
         return (h_0, c_0)
+
+    def fit_transform(self, input):
+        self.scaler.partial_fit(input)
+        if self.index > 2:
+            return t(self.scaler.transform(input))
+
+    def gradient_clipping(self):
+        nn.utils.clip_grad_norm_(
+            [p for g in self.optimizer.param_groups for p in g["params"]],
+            self.config["GRADIENT_CLIPPING"],
+        )  # gradient clipping
+
+    def compute_explained_variance(self, target, advantage):
+        self.target_var_scaler.partial_fit(target)
+        self.advantages_var_scaler.partial_fit(advantage)
+
+        var_targets = self.target_var_scaler.std
+        var_advantages = self.advantages_var_scaler.std
+
+        if var_targets == 0:
+            explained_variance = 0
+        else:
+            explained_variance = 1 - var_advantages / var_targets
+
+        return explained_variance

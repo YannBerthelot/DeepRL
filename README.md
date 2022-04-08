@@ -32,9 +32,13 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## To-do
 
 - [x] Merge n_steps A2C and LSTM A2C
-- [ ] Merge A2C and n_steps A2C
+- [x] Merge A2C and n_steps A2C
 - [x] Add normalization and standardization of states and rewards
-- [ ] Add normalization and standardization of target
+- [x] Add normalization and standardization of target
 - [x] Add entropy
 - [ ] Add tests
-- [ ] Add policy and target networks
+- [x] Add policy and target networks
+- [x] Add explained variance
+- [ ] Add testing during training to select agent to save
+- [ ] Rework action selection logging
+- [ ] Add schedules for parameters (e.g. learning rate)

@@ -47,13 +47,12 @@ class SimpleStandardizer:
         self.mean = self.mean + (delta / self.count)
         delta2 = newValue - self.mean
         self.M2 += np.multiply(delta, delta2)
-
         if self.count >= 2:
             self.std = np.sqrt(self.M2 / self.count)
             self.std = np.nan_to_num(self.std, nan=1)
-            self.std[self.std == 0] = 1
 
     def transform(self, value: np.array):
+        self.std[self.std == 0.0] = 1
         if self.shift_mean:
             new_value = (value - self.mean) / self.std
         else:
