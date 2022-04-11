@@ -42,3 +42,8 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 - [ ] Add testing during training to select agent to save
 - [ ] Rework action selection logging
 - [x] Add schedules for parameters (e.g. learning rate)
+- [ ] Add tests (cf : https://andyljones.com/posts/rl-debugging.html)
+- [x] Add policy and target networks
+- [ ] Add scheduler for learning rate (or other parameters)
+- [ ] Add explained variance to the KPIs
+- [ ] Package the code into a Python lib

@@ -5,7 +5,7 @@ description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "3.8"
 torch = "1.10.2"
 numpy = "1.22.2"
 gym = "0.21.0"
@@ -13,11 +13,14 @@ tqdm = "4.62.3"
 tensorboard = "2.8.0"
 pyglet = "1.5.21"
 pandas = "1.4.1"
-matplotlib = "^3.5.1"
-Box2D = "^2.3.10"
-pep517 = "^0.12.0"
+matplotlib = "3.5.1"
+Box2D = "2.3.10"
+pep517 = "0.12.0"
 wandb = "0.12.10"
 scikit-learn = "^1.0.2"
+pymgrid = {git = "https://github.com/YannBerthelot/pymgrid", rev = "regime_expert_policies"}
+cvxpy = "^1.2.0"
+cvxopt = "^1.3.0"
 
 [tool.poetry.dev-dependencies]
 

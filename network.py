@@ -227,7 +227,6 @@ class ActorCritic(nn.Module):
             self.config["HIDDEN_LAYERS"],
             self.config,
         )
-
         print(self.actorcritic)
 
         if self.config["logging"] == "wandb":

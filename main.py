@@ -8,7 +8,7 @@ import cProfile
 
 if __name__ == "__main__":
     # Init folder for model saves
-    os.makedirs(config["MODEL_PATH"], exist_ok=True)
+
     os.makedirs(config["TENSORBOARD_PATH"], exist_ok=True)
 
     # Init Gym env

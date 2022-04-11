@@ -50,9 +50,17 @@ class SimpleStandardizer:
         self.mean = self.mean + (delta / self.count)
         delta2 = newValue - self.mean
         self.M2 += np.multiply(delta, delta2)
+<<<<<<< HEAD
         if self.count >= 2:
             self.std = np.sqrt(self.M2 / self.count)
             self.std = np.nan_to_num(self.std, nan=1)
+=======
+
+        if self.count >= 2:
+            self.std = np.sqrt(self.M2 / self.count)
+            self.std = np.nan_to_num(self.std, nan=1)
+            self.std[self.std == 0] = 1
+>>>>>>> pymgrid_experiments
 
     def transform(self, value: np.array):
         self.std[self.std == 0.0] = 1
@@ -76,6 +84,7 @@ class SimpleStandardizer:
         else:
             return new_value
 
+<<<<<<< HEAD
 
 def get_device(device_name: str) -> torch.DeviceObjType:
     """
@@ -106,3 +115,5 @@ class LinearSchedule:
 
     def transform(self, t):
         return self.start - self.step * t
+=======
+>>>>>>> pymgrid_experiments
