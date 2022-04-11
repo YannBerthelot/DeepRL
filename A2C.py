@@ -113,13 +113,15 @@ class A2C(Agent):
         self.memory = Memory(n_steps=config["N_STEPS"], config=config)
         # Fetch the action and state space from the underlying Gym environment
         self.obs_shape = env.observation_space.shape
+        if config["RECURRENT"]:
+            self.obs_shape = (self.obs_shape[0] + 1,)
         if config["CONTINUOUS"]:
             self.action_shape = env.action_space.shape[0]
         else:
             self.action_shape = env.action_space.n
         self.config = config
-        self.recurrent = self.config["RECURRENT"]
         if self.config["SCALING"]:
+
             if self.config["SCALING_METHOD"] == "standardize":
                 self.obs_scaler = SimpleStandardizer(clip=True)
                 self.reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)
@@ -130,6 +132,7 @@ class A2C(Agent):
                     maxs=[100], mins=[-100], feature_range=(-1, 1)
                 )
         else:
+            self.config["LEARNING_START"] = 0
             self.obs_scaler = None
             self.reward_scaler = None
             self.target_scaler = None
@@ -162,7 +165,8 @@ class A2C(Agent):
         Returns:
             int: The selected action
         """
-        return self.network.select_action(observation, hidden)
+        action, next_hidden = self.network.select_action(observation, hidden)
+        return action, next_hidden
 
     def train(self, env: gym.Env, nb_timestep: int) -> None:
         """
@@ -182,10 +186,10 @@ class A2C(Agent):
         episode = 1
         t = 1
         t_old = 0
+        action_list = []
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
-        action_list = []
 
         while t <= nb_timestep:
             action_list_episode = []
@@ -195,34 +199,45 @@ class A2C(Agent):
             # Init reward_sum and variables for the episode
             rewards = []
             done, obs = False, env.reset()
-            if self.recurrent:
+
+            if self.config["RECURRENT"]:
+                # Add the previous action to the observation
+                obs = np.append(obs, 0)
                 hidden = self.network.get_initial_states()
             else:
                 hidden = None
-            # self.obs_scaler.partial_fit(obs.reshape(1, -1))
+
+            if self.config["SCALING"]:
+                self.obs_scaler.partial_fit(obs)
+
             # Loop through the episode
             t_episode = 0
             while not done:
                 # Select the action using the actor network
+
                 action, next_hidden = self.select_action(obs, hidden)
+
                 action_list_episode.append(action)
 
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
+                if self.config["RECURRENT"]:
+                    # Add the previous action to the observation
+                    next_obs = np.append(next_obs, action)
                 rewards.append(reward)
                 # Scaling
                 if self.config["SCALING"]:
-                    if t < self.config["LEARNING_START"]:
-                        self.obs_scaler.partial_fit(next_obs)
-                        self.reward_scaler.partial_fit(np.array([reward]))
-                    else:
+                    if t >= self.config["LEARNING_START"]:
                         # self.obs_scaler.partial_fit(next_obs)
                         # self.reward_scaler.partial_fit(np.array([reward]))
                         reward = self.reward_scaler.transform(np.array([reward]))[0]
                         next_obs = self.obs_scaler.transform(next_obs)
+                    else:
+                        self.obs_scaler.partial_fit(next_obs)
+                        self.reward_scaler.partial_fit(np.array([reward]))
 
                 # Add the experience collected to the memory for the n-step processing
-                if t >= self.config["LEARNING_START"]:
+                if t >= 0:  # self.config["LEARNING_START"]:
                     self.memory.add(obs, action, reward, done, hidden)
 
                     # When we have collected n steps we can start learning
@@ -252,6 +267,7 @@ class A2C(Agent):
                 t += 1
                 t_episode += 1
                 obs = next_obs
+
                 hidden = next_hidden
 
             # Clear memory to start a new episode
@@ -273,6 +289,9 @@ class A2C(Agent):
                         f'Early stopping due to constant reward for {self.config["EARLY_STOPPING_STEPS"]} steps'
                     )
                     break
+            else:
+                constant_reward_counter = 0
+
             old_reward_sum = reward_sum
             # Log performances in Tensorboard
             if self.config["logging"] == "wandb":
@@ -368,7 +387,7 @@ class A2C(Agent):
         best_test_episode_reward = 0
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
-            if self.recurrent:
+            if self.config["RECURRENT"]:
                 hidden = self.network.get_initial_states()
             else:
                 hidden = None

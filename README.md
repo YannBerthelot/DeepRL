@@ -36,9 +36,9 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 - [x] Add normalization and standardization of states and rewards
 - [x] Add normalization and standardization of target
 - [x] Add entropy
-- [ ] Add tests
+- [ ] Add units tests
 - [x] Add policy and target networks
 - [x] Add explained variance
 - [ ] Add testing during training to select agent to save
 - [ ] Rework action selection logging
-- [ ] Add schedules for parameters (e.g. learning rate)
+- [x] Add schedules for parameters (e.g. learning rate)

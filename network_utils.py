@@ -77,7 +77,7 @@ def get_network_from_architecture(
             if i == 0:
                 _input_shape = input_shape
                 _output_shape = int(nb_neurons)
-                print(_input_shape, _output_shape)
+                layers.append(activation)
                 layers.append(nn.Linear(_input_shape, _output_shape))
                 layers.append(activation)
             else:

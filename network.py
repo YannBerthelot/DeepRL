@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 # Network creator tool
 from network_utils import get_network_from_architecture, t, compute_KL_divergence
-from utils import SimpleStandardizer
+from utils import SimpleStandardizer, get_device, LinearSchedule
 
 # Numpy
 import numpy as np
@@ -61,6 +61,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         common_architecture = eval(config["COMMON_NN_ARCHITECTURE"])
         actor_architecture = eval(config["ACTOR_NN_ARCHITECTURE"])
         critic_architecture = eval(config["CRITIC_NN_ARCHITECTURE"])
+        torch.autograd.set_detect_anomaly(True)
         # Device to run computations on
         self.device = "CPU"
         if self.continuous:
@@ -151,10 +152,12 @@ class ActorCriticRecurrentNetworks(nn.Module):
             Tuple[Torch.Tensor, Torch.Tensor]: The processed state and the new hidden state of the LSTM
         """
 
-        x = F.relu(self.common_layers(state))
+        x = self.common_layers(state)
         if self.recurrent:
+            # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
+            x = torch.tanh(x)
             x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
-            x, lstm_hidden = self.recurrent_layer(x, hidden)
+            x, hidden = self.recurrent_layer(x, hidden)
         return x, hidden
 
     def actor(
@@ -170,8 +173,10 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the action probabilities and the new hidden state
         """
-        x, hidden = self.forward(state, hidden)
-        x = self.actor_layers(x)
+        with torch.no_grad():
+            embedded_obs, hidden = self.forward(state, hidden)
+        # hidden = (hidden[0].detach(), hidden[1].detach())
+        x = self.actor_layers(embedded_obs)
         if self.continuous:
             stds = torch.clamp(self.logstds.exp(), 1e-3, 0.1)
             if self.config["LAW"] == "normal":
@@ -198,8 +203,9 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             torch.Tensor: A tuple containing the state value and the new hidden state
         """
-        x, hidden = self.forward(state, hidden)
-        value = self.critic_layers(x)
+        with torch.no_grad():
+            embedded_obs, not_hidden = self.forward(state, hidden)
+        value = self.critic_layers(embedded_obs)
         return value.reshape(-1, 1)
 
 
@@ -211,12 +217,8 @@ class ActorCritic(nn.Module):
         self.env = env
         self.continuous = config["CONTINUOUS"]
         # Set the Torch device
-        if config["DEVICE"] == "GPU":
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            if not torch.cuda.is_available():
-                warnings.warn("GPU not available, switching to CPU", UserWarning)
-        else:
-            self.device = torch.device("cpu")
+
+        self.device = get_device(config["DEVICE"])
         # Create the network architecture given the observation, action and config shapes
         self.actorcritic = ActorCriticRecurrentNetworks(
             observation_shape[0],
@@ -225,16 +227,9 @@ class ActorCritic(nn.Module):
             self.config["HIDDEN_LAYERS"],
             self.config,
         )
-        self.actorcritic_target = ActorCriticRecurrentNetworks(
-            observation_shape[0],
-            action_shape,
-            self.config["HIDDEN_SIZE"],
-            self.config["HIDDEN_LAYERS"],
-            self.config,
-        )
-        self.actorcritic_target.load_state_dict(self.actorcritic.state_dict())
-        self.actorcritic_target.eval()
+
         print(self.actorcritic)
+
         if self.config["logging"] == "wandb":
             wandb.watch(self.actorcritic)
 
@@ -243,17 +238,14 @@ class ActorCritic(nn.Module):
             self.actorcritic.parameters(),
             lr=config["LEARNING_RATE"],
         )
-        self.optimizer_actor = optim.Adam(
-            self.actorcritic.actor_layers.parameters(),
-            lr=config["LEARNING_RATE"],
-        )
-        self.optimizer_critic = optim.Adam(
-            self.actorcritic.critic_layers.parameters(),
-            lr=config["LEARNING_RATE"],
-        )
 
         self.target_var_scaler = SimpleStandardizer()
         self.advantages_var_scaler = SimpleStandardizer()
+        self.lr_scheduler = LinearSchedule(
+            self.config["LEARNING_RATE"],
+            self.config["LEARNING_RATE_END"],
+            self.config["NB_TIMESTEPS_TRAIN"],
+        )
         # Init stuff
         self.loss = None
         self.epoch = 0
@@ -279,7 +271,7 @@ class ActorCritic(nn.Module):
         observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
             :, None, :
         ]
-        dist, hidden = self.actorcritic_target.actor(observation, hidden)
+        dist, hidden = self.actorcritic.actor(observation, hidden)
         action = dist.sample()
         if self.continuous:
             if self.config["LAW"] == "normal":
@@ -326,6 +318,11 @@ class ActorCritic(nn.Module):
         # For logging purposes
         self.index += 1
 
+        self.optimizer = optim.Adam(
+            self.actorcritic.parameters(),
+            lr=self.lr_scheduler.transform(self.index),
+        )
+
         state = t(state).reshape(1, -1)[:, None, :]
         next_state = t(next_state).reshape(1, -1)[:, None, :]
         dist, hidden = self.actorcritic.actor(
@@ -346,47 +343,57 @@ class ActorCritic(nn.Module):
         estimated_return = self.actorcritic.critic(state, hidden)
 
         # Target scaling
+        self.scaler.partial_fit(empirical_return.detach().numpy().flatten())
         if (
             (self.scaler is not None)
             and (self.config["TARGET_SCALING"])
-            and self.index > 2
+            and (self.index > 2)
+            and self.index <= self.config["LEARNING_START"]
         ):
-            empirical_return = self.fit_transform(
-                empirical_return.detach().numpy().flatten()
+
+            empirical_return = t(
+                self.scaler.transform(empirical_return.detach().numpy().flatten())
             )
+            # empirical_return = self.scaler.pytorch_transform(empirical_return)
 
         advantage = empirical_return - estimated_return
+        with torch.no_grad():
+            KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
+        self.old_dist = dist
 
-        # Losses
+        # Losses (be careful that all its components are torch tensors with grad on)
         critic_loss = advantage.pow(2)
         actor_loss = -log_probs * advantage.detach()
         entropy_loss = -dist.entropy().mean()
+        kl_loss = -KL_divergence
 
         loss = (
             actor_loss
             + self.config["VALUE_FACTOR"] * critic_loss
             + self.config["ENTROPY_FACTOR"] * entropy_loss
+            + self.config["KL_FACTOR"] * kl_loss
         )
-
-        self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-        # self.gradient_clipping()
-        self.optimizer.step()
+        if self.index > self.config["LEARNING_START"]:
+            self.optimizer.zero_grad()
+            loss.backward(retain_graph=True)
+            # self.gradient_clipping()
+            self.optimizer.step()
 
         # KPIs
         explained_variance = self.compute_explained_variance(
             empirical_return.detach().numpy().flatten(),
             advantage.detach().numpy().flatten(),
         )
-        KL_divergence = compute_KL_divergence(self.old_dist, dist)
-        self.old_dist = dist
 
-        if self.index % self.config["TARGET_UPDATE"] == 0:
-            self.actorcritic_target.load_state_dict(self.actorcritic.state_dict())
         # Logging
         if self.writer:
             if self.config["logging"] == "tensorboard":
                 self.writer.add_scalar("Train/entropy loss", -entropy_loss, self.index)
+                self.writer.add_scalar(
+                    "Train/leaarning rate",
+                    self.lr_scheduler.transform(self.index),
+                    self.index,
+                )
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
                 self.writer.add_scalar("Train/total loss", loss, self.index)
@@ -456,9 +463,6 @@ class ActorCritic(nn.Module):
         print("Loading")
         self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
         self.actorcritic.config = self.config
-
-        self.actorcritic_target = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
-        self.actorcritic_target.config = self.config
 
         print(self.actorcritic)
 
