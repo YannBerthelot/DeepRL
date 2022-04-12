@@ -9,6 +9,7 @@ import wandb
 
 # Base class for Agent
 from agent import Agent
+from buffer import Memory, RolloutBuffer
 
 # The network we create and the device to run it on
 from network import ActorCritic
@@ -26,149 +27,21 @@ from datetime import date
 now = datetime.now()
 
 
-class RolloutBuffer:
-    def __init__(self, n_steps, config) -> None:
-        self.steps = {
-            "states": [],
-            "actions": [],
-            "rewards": [],
-            "dones": [],
-            "hiddens": [],
-        }
-        self.n_steps = n_steps
-        self.config = config
-        pass
-
-    def add(self, state, action, reward, done, hidden=None):
-        self.steps["states"].append(state)
-        self.steps["actions"].append(action)
-        self.steps["rewards"].append(reward)
-        self.steps["dones"].append(done)
-        self.steps["hiddens"].append(hidden)
-
-    def clear(self):
-        self.steps = {
-            "states": [],
-            "actions": [],
-            "rewards": [],
-            "dones": [],
-            "hiddens": [],
-        }
-
-    def get_steps(self):
-        return self.steps
-
-
-class Memory:
-    def __init__(self, n_steps, config):
-        self.steps = {
-            "states": [],
-            "actions": [],
-            "rewards": [],
-            "dones": [],
-            "hiddens": [],
-        }
-        self.n_steps = n_steps
-        self.config = config
-
-    def add(self, state, action, reward, done, hidden=None):
-        self.steps["states"].append(state)
-        self.steps["actions"].append(action)
-        self.steps["rewards"].append(reward)
-        self.steps["dones"].append(done)
-        self.steps["hiddens"].append(hidden)
-
-    def clear(self):
-        self.steps = {
-            "states": [],
-            "actions": [],
-            "rewards": [],
-            "dones": [],
-            "hiddens": [],
-        }
-
-    def remove_first_step(self):
-        self.steps = {key: values[1:] for key, values in self.steps.items()}
-
-    def compute_return(self):
-        n_step_return = 0
-        for i, reward in enumerate(reversed(self.steps["rewards"])):
-            n_step_return = (
-                reward
-                + (1.0 - self.steps["dones"][i])
-                * self.config["GAMMA"] ** i
-                * n_step_return
-            )
-        return (
-            n_step_return,
-            self.steps["states"][0],
-            self.steps["actions"][0],
-            self.steps["dones"][0],
-            self.steps["hiddens"][0],
-        )
-
-    def get_step(self, i):
-        return {key: values[i] for key, values in self.steps.items()}
-
-    # def _zip(self):
-    #     return zip(
-    #         self.states[: self.n_steps],
-    #         self.actions[: self.n_steps],
-    #         self.rewards[: self.n_steps],
-    #         self.dones[: self.n_steps],
-    #         self.n_step_returns,
-    #     )
-
-    # def reversed(self):
-    #     for data in list(self._zip())[::-1]:
-    #         yield data
-
-    def __len__(self):
-        return len(self.steps["rewards"])
-
-
 class A2C(Agent):
     def __init__(self, env: gym.Env, config: dict, comment: str = "", run=None) -> None:
         super(Agent, self).__init__()
-
-        # current_time = now.strftime("%H:%M")
-        today = date.today().strftime("%d-%m-%Y")
-        LOG_DIR = (
-            f'{config["TENSORBOARD_PATH"]}/{config["ENVIRONMENT"]}/{today}/{comment}'
-        )
-        os.makedirs(config["MODEL_PATH"], exist_ok=True)
-        # Initialize Tensorboard
-        writer = SummaryWriter(log_dir=LOG_DIR)
-        self.comment = comment
-        # Underlying Gym env
-        self.env = env
-        self.__name__ = "n-steps A2C"
-        self.memory = Memory(n_steps=config["N_STEPS"], config=config)
-        # Fetch the action and state space from the underlying Gym environment
-        self.obs_shape = env.observation_space.shape
-        if config["RECURRENT"] and self.config["ADD_ACTION"]:
-            self.obs_shape = (self.obs_shape[0] + 1,)
-        if config["CONTINUOUS"]:
-            self.action_shape = env.action_space.shape[0]
-        else:
-            self.action_shape = env.action_space.n
         self.config = config
-        if self.config["SCALING"]:
+        self.env = env
+        self.comment = comment
 
-            if self.config["SCALING_METHOD"] == "standardize":
-                self.obs_scaler = SimpleStandardizer(clip=True)
-                self.reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)
-                self.target_scaler = SimpleStandardizer(shift_mean=False, clip=False)
-            elif self.config["SCALING_METHOD"] == "normalize":
-                self.obs_scaler = MinMaxScaler(feature_range=(-1, 1))
-                self.reward_scaler = SimpleMinMaxScaler(
-                    maxs=[100], mins=[-100], feature_range=(-1, 1)
-                )
-        else:
-            self.config["LEARNING_START"] = 0
-            self.obs_scaler = None
-            self.reward_scaler = None
-            self.target_scaler = None
+        self.memory = Memory(n_steps=config["N_STEPS"], config=config)
+        self.rollout = RolloutBuffer(buffer_size=config["N_STEPS"])
+        self.obs_shape = env.observation_space.shape
+        self.action_shape = (
+            env.action_space.shape[0] if config["CONTINUOUS"] else env.action_space.n
+        )
+
+        self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers()
 
         # Initialize the policy network with the right shape
         self.network = ActorCritic(
@@ -182,6 +55,8 @@ class A2C(Agent):
         self.run = run
 
         # For logging purpose
+        LOG_DIR = self.create_dirs()
+        writer = SummaryWriter(log_dir=LOG_DIR)
         self.network.writer = writer
         self.best_episode_reward = -np.inf
 
@@ -225,7 +100,7 @@ class A2C(Agent):
             pbar.update(self.t - t_old)
             t_old, t_episode = self.t, 0
 
-            done, obs, rewards, hidden = False, env.reset(), []
+            old_done, done, obs, rewards = False, False, env.reset(), []
             hidden = self.network.get_initial_states()
 
             if self.config["SCALING"]:
@@ -251,20 +126,47 @@ class A2C(Agent):
                             old_done,
                             old_hidden,
                         ) = self.memory.compute_return()
-                        if not done:
-                            self.network.update_policy(
-                                old_obs,
-                                old_action,
-                                n_step_return,
-                                next_obs,
-                                old_hidden,
-                                hidden,
-                                done,
+                        self.rollout.add(
+                            old_obs,
+                            obs,
+                            old_action,
+                            n_step_return,
+                            old_done,
+                            hidden,
+                            old_hidden,
+                        )
+                        if (
+                            (not old_done)
+                            and (t_episode % self.config["BUFFER_SIZE"] == 0)
+                            and (
+                                t_episode
+                                >= self.config["N_STEPS"] + self.config["BUFFER_SIZE"]
                             )
+                        ):
+                            self.network.update_policy(self.rollout)
+
                         self.memory.remove_first_step()
+
+                self.rollout.reset()
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs, hidden = next_obs, next_hidden
-
+            while not old_done:
+                (
+                    n_step_return,
+                    old_obs,
+                    old_action,
+                    old_done,
+                    old_hidden,
+                ) = self.memory.compute_return()
+                self.rollout.add(
+                    old_obs,
+                    obs,
+                    old_action,
+                    n_step_return,
+                    old_done,
+                    hidden,
+                    old_hidden,
+                )
             self.memory.clear()
             reward_sum = np.sum(rewards)
 
@@ -452,3 +354,26 @@ class A2C(Agent):
                 self.obs_scaler.partial_fit(next_obs)
                 self.reward_scaler.partial_fit(np.array([reward]))
         return reward, next_obs
+
+    def create_dirs(self):
+        today = date.today().strftime("%d-%m-%Y")
+        os.makedirs(self.config["MODEL_PATH"], exist_ok=True)
+        return f'{self.config["TENSORBOARD_PATH"]}/{self.config["ENVIRONMENT"]}/{today}/{self.comment}'
+
+    def get_scalers(self):
+        if self.config["SCALING"]:
+            if self.config["SCALING_METHOD"] == "standardize":
+                obs_scaler = SimpleStandardizer(clip=True)
+                reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)
+                target_scaler = SimpleStandardizer(shift_mean=False, clip=False)
+            elif self.config["SCALING_METHOD"] == "normalize":
+                obs_scaler = MinMaxScaler(feature_range=(-1, 1))
+                reward_scaler = SimpleMinMaxScaler(
+                    maxs=[100], mins=[-100], feature_range=(-1, 1)
+                )
+        else:
+            self.config["LEARNING_START"] = 0
+            obs_scaler = None
+            reward_scaler = None
+            target_scaler = None
+        return obs_scaler, reward_scaler, target_scaler

@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from buffer import RolloutBuffer
 
 # Network creator tool
 from network_utils import get_network_from_architecture, t, compute_KL_divergence
@@ -58,10 +59,11 @@ class ActorCriticRecurrentNetworks(nn.Module):
         self.action_dim = action_dim
         self.recurrent = self.config["RECURRENT"]
         self.continuous = self.config["CONTINUOUS"]
+
         common_architecture = eval(config["COMMON_NN_ARCHITECTURE"])
         actor_architecture = eval(config["ACTOR_NN_ARCHITECTURE"])
         critic_architecture = eval(config["CRITIC_NN_ARCHITECTURE"])
-        torch.autograd.set_detect_anomaly(True)
+
         # Device to run computations on
         self.device = "CPU"
         if self.config["CONTINUOUS"]:
@@ -295,13 +297,7 @@ class ActorCritic(nn.Module):
 
     def update_policy(
         self,
-        state: np.array,
-        action: np.array,
-        n_step_return: np.array,
-        next_state: np.array,
-        hidden: np.array,
-        next_hidden: np.array,
-        done: bool = False,
+        rollout: RolloutBuffer,
     ) -> None:
         """
         Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
@@ -322,21 +318,26 @@ class ActorCritic(nn.Module):
             self.actorcritic.parameters(),
             lr=self.lr_scheduler.transform(self.index),
         )
-
-        state = t(state).reshape(1, -1)[:, None, :]
-        next_state = t(next_state).reshape(1, -1)[:, None, :]
-        embedded_obs, hidden = self.actorcritic.forward(state, hidden)
-        embedded_next_obs, next_hidden = self.actorcritic.forward(
-            next_state, next_hidden
-        )
+        if self.config["RECURRENT"]:
+            embedded_obs, hidden = self.actorcritic.forward(
+                t(rollout.states), t(rollout.hiddens)
+            )
+            embedded_next_obs, next_hidden = self.actorcritic.forward(
+                t(rollout.next_states), t(rollout.next_hiddens)
+            )
+        else:
+            embedded_obs, hidden = self.actorcritic.forward(t(rollout.states), None)
+            embedded_next_obs, next_hidden = self.actorcritic.forward(
+                t(rollout.next_states), None
+            )
         dist, _ = self.actorcritic.actor(
             embedded_obs,
             hidden,
         )
 
-        log_probs = dist.log_prob(t(np.array([action])))
+        log_probs = dist.log_prob(t(rollout.actions))
 
-        empirical_return = n_step_return + (1 - done) * self.config[
+        empirical_return = t(rollout.returns) + (1 - t(rollout.dones)) * self.config[
             "GAMMA"
         ] ** self.config["N_STEPS"] * self.actorcritic.critic(
             embedded_next_obs, next_hidden
@@ -354,16 +355,15 @@ class ActorCritic(nn.Module):
         ):
             empirical_return = self.scaler.pytorch_transform(empirical_return)
 
-        advantage = empirical_return - estimated_return
-
-        with torch.no_grad():
-            KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
+        advantages = empirical_return - estimated_return
+        # with torch.no_grad():
+        #     KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
 
         # Losses (be careful that all its components are torch tensors with grad on)
-        critic_loss = advantage.pow(2)
-        actor_loss = -log_probs * advantage.detach()
+        critic_loss = advantages.pow(2).mean()
+        actor_loss = (-log_probs * advantages).mean()
         entropy_loss = -dist.entropy().mean()
-        kl_loss = -KL_divergence
+        kl_loss = 0  # -KL_divergence
 
         loss = (
             actor_loss
@@ -378,10 +378,11 @@ class ActorCritic(nn.Module):
             self.optimizer.step()
 
         # KPIs
-        explained_variance = self.compute_explained_variance(
-            empirical_return.detach().numpy().flatten(),
-            advantage.detach().numpy().flatten(),
-        )
+        # explained_variance = self.compute_explained_variance(
+        #     empirical_return.detach().numpy().flatten(),
+        #     advantage.detach().numpy().flatten(),
+        # )
+        explaied_variance = 0
         self.old_dist = dist
 
         # Logging
@@ -396,10 +397,10 @@ class ActorCritic(nn.Module):
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
                 self.writer.add_scalar("Train/total loss", loss, self.index)
-                self.writer.add_scalar(
-                    "Train/explained variance", explained_variance, self.index
-                )
-                self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
+                # self.writer.add_scalar(
+                #     "Train/explained variance", explained_variance, self.index
+                # )
+                # self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
@@ -409,8 +410,8 @@ class ActorCritic(nn.Module):
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
                     "Train/total loss": loss,
-                    "Train/explained variance": explained_variance,
-                    "Train/KL divergence": KL_divergence,
+                    # "Train/explained variance": explained_variance,
+                    # "Train/KL divergence": KL_divergence,
                     "Train/learning rate": self.lr_scheduler.transform(self.index),
                 },
                 commit=False,

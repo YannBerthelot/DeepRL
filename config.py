@@ -23,7 +23,7 @@ config = {
     "KL_FACTOR": 0.0000,
     "LEARNING_START": 1e3,
     # Specific
-    "N_STEPS": 10,
+    "N_STEPS": 1,
     # NETWORKS
     "RECURRENT": False,
     "GRADIENT_CLIPPING": 0.5,
@@ -49,11 +49,12 @@ config = {
     # Logging
     "logging": "tensorboard",
     # Normalization
-    "SCALING": True,
+    "SCALING": False,
     "SCALING_METHOD": "standardize",
     "TARGET_SCALING": False,
     # Continuous
     "CONTINUOUS": False,
     "LAW": "normal",
     "ADD_ACTION": False,
+    "BUFFER_SIZE": 5,
 }
