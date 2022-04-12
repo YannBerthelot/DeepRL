@@ -212,32 +212,25 @@ class A2C(Agent):
             nb_epoch (int): Number of epochs to train on.
         """
         # Early stopping
-        self.constant_reward_counter = 0
-        self.old_reward_sum = 0
+        self.constant_reward_counter, self.old_reward_sum = 0, 0
 
         # Init training
-        self.episode = 1
-        t = 1
-        t_old = 0
-        action_list = []
-        self.constant_reward_counter = 0
+        self.episode, self.t, t_old, self.constant_reward_counter = 1, 1, 0, 0
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
 
-        while t <= nb_timestep:
+        while self.t <= nb_timestep:
             # tqdm stuff
-            pbar.update(t - t_old)
-            t_old = t
+            pbar.update(self.t - t_old)
+            t_old, t_episode = self.t, 0
 
-            rewards = []
-            done, obs = False, env.reset()
+            done, obs, rewards, hidden = False, env.reset(), []
             hidden = self.network.get_initial_states()
 
             if self.config["SCALING"]:
                 self.obs_scaler.partial_fit(obs)
 
-            t_episode = 0
             while not done:
                 action, next_hidden = self.select_action(obs, hidden)
                 next_obs, reward, done, _ = env.step(action)
@@ -245,7 +238,7 @@ class A2C(Agent):
                 reward, next_obs = self.scaling(reward, next_obs)
 
                 # Add the experience collected to the memory for the n-step processing
-                if t >= self.config["LEARNING_START"]:
+                if self.t >= self.config["LEARNING_START"]:
                     self.memory.add(obs, action, reward, done, hidden)
 
                     # When we have collected n steps we can start learning
@@ -269,10 +262,8 @@ class A2C(Agent):
                                 done,
                             )
                         self.memory.remove_first_step()
-                t += 1
-                t_episode += 1
-                obs = next_obs
-                hidden = next_hidden
+                self.t, t_episode = self.t + 1, t_episode + 1
+                obs, hidden = next_obs, next_hidden
 
             self.memory.clear()
             reward_sum = np.sum(rewards)
@@ -282,9 +273,8 @@ class A2C(Agent):
             if self.early_stopping(reward_sum):
                 break
 
-            self.old_reward_sum = reward_sum
+            self.old_reward_sum, self.episode = reward_sum, self.episode + 1
             self.episode_logging(rewards, reward_sum)
-            self.episode += 1
 
         pbar.close()
         self.train_logging()

@@ -467,7 +467,7 @@ class ActorCritic(nn.Module):
         print(self.actorcritic)
 
     def get_initial_states(self):
-        if self.config["RECURRENT":]
+        if self.config["RECURRENT"]:
             h_0, c_0 = None, None
 
             h_0 = torch.zeros(
