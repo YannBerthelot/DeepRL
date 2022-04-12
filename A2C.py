@@ -26,6 +26,39 @@ from datetime import date
 now = datetime.now()
 
 
+class RolloutBuffer:
+    def __init__(self, n_steps, config) -> None:
+        self.steps = {
+            "states": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "hiddens": [],
+        }
+        self.n_steps = n_steps
+        self.config = config
+        pass
+
+    def add(self, state, action, reward, done, hidden=None):
+        self.steps["states"].append(state)
+        self.steps["actions"].append(action)
+        self.steps["rewards"].append(reward)
+        self.steps["dones"].append(done)
+        self.steps["hiddens"].append(hidden)
+
+    def clear(self):
+        self.steps = {
+            "states": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "hiddens": [],
+        }
+
+    def get_steps(self):
+        return self.steps
+
+
 class Memory:
     def __init__(self, n_steps, config):
         self.steps = {
@@ -113,7 +146,7 @@ class A2C(Agent):
         self.memory = Memory(n_steps=config["N_STEPS"], config=config)
         # Fetch the action and state space from the underlying Gym environment
         self.obs_shape = env.observation_space.shape
-        if config["RECURRENT"]:
+        if config["RECURRENT"] and self.config["ADD_ACTION"]:
             self.obs_shape = (self.obs_shape[0] + 1,)
         if config["CONTINUOUS"]:
             self.action_shape = env.action_space.shape[0]
@@ -202,7 +235,8 @@ class A2C(Agent):
 
             if self.config["RECURRENT"]:
                 # Add the previous action to the observation
-                obs = np.append(obs, 0)
+                if self.config["ADD_ACTION"]:
+                    obs = np.append(obs, 0)
                 hidden = self.network.get_initial_states()
             else:
                 hidden = None
@@ -221,7 +255,7 @@ class A2C(Agent):
 
                 # Step the environment
                 next_obs, reward, done, _ = env.step(action)
-                if self.config["RECURRENT"]:
+                if self.config["RECURRENT"] and self.config["ADD_ACTION"]:
                     # Add the previous action to the observation
                     next_obs = np.append(next_obs, action)
                 rewards.append(reward)
@@ -251,15 +285,16 @@ class A2C(Agent):
                             old_hidden,
                         ) = self.memory.compute_return()
                         # Run the n-step A2C update
-                        self.network.update_policy(
-                            old_obs,
-                            old_action,
-                            n_step_return,
-                            next_obs,
-                            old_hidden,
-                            hidden,
-                            done,
-                        )
+                        if not done:
+                            self.network.update_policy(
+                                old_obs,
+                                old_action,
+                                n_step_return,
+                                next_obs,
+                                old_hidden,
+                                hidden,
+                                done,
+                            )
                         # Clear the used experience from the memory
                         self.memory.remove_first_step()
 

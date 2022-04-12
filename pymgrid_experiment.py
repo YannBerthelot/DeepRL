@@ -1,5 +1,5 @@
 import wandb
-from n_step_A2C import A2C
+from A2C import A2C
 from config import config
 from pymgrid_config import pymgrid_config
 from pymgrid_utils import get_environments

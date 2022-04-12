@@ -47,3 +47,5 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 - [ ] Add scheduler for learning rate (or other parameters)
 - [ ] Add explained variance to the KPIs
 - [ ] Package the code into a Python lib
+- [ ] Solve the n_step_return problem
+- [ ] Add rollout buffer and switch to batch learning

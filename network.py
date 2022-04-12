@@ -64,7 +64,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         torch.autograd.set_detect_anomaly(True)
         # Device to run computations on
         self.device = "CPU"
-        if self.continuous:
+        if self.config["CONTINUOUS"]:
             if self.config["LAW"] == "beta":
                 final_activation = "relu"
             elif self.config["LAW"] == "normal":
@@ -132,7 +132,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 config["CRITIC_ACTIVATION_FUNCTION"],
                 mode="critic",
             )
-        if self.continuous:
+        if self.config["CONTINUOUS"]:
             logstds_param = nn.Parameter(torch.full((action_dim,), 0.1))
             self.register_parameter("logstds", logstds_param)
 
@@ -155,7 +155,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         x = self.common_layers(state)
         if self.recurrent:
             # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
-            x = torch.tanh(x)
+            # x = torch.relu(x)
             x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
             x, hidden = self.recurrent_layer(x, hidden)
         return x, hidden
@@ -173,11 +173,11 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the action probabilities and the new hidden state
         """
-        with torch.no_grad():
-            embedded_obs, hidden = self.forward(state, hidden)
+        # with torch.no_grad():
+        # embedded_obs, hidden = self.forward(state, hidden)
         # hidden = (hidden[0].detach(), hidden[1].detach())
-        x = self.actor_layers(embedded_obs)
-        if self.continuous:
+        x = self.actor_layers(state)
+        if self.config["CONTINUOUS"]:
             stds = torch.clamp(self.logstds.exp(), 1e-3, 0.1)
             if self.config["LAW"] == "normal":
                 return (
@@ -203,9 +203,9 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             torch.Tensor: A tuple containing the state value and the new hidden state
         """
-        with torch.no_grad():
-            embedded_obs, not_hidden = self.forward(state, hidden)
-        value = self.critic_layers(embedded_obs)
+        # with torch.no_grad():
+        # embedded_obs, _ = self.forward(state, hidden)
+        value = self.critic_layers(state)
         return value.reshape(-1, 1)
 
 
@@ -270,7 +270,8 @@ class ActorCritic(nn.Module):
         observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
             :, None, :
         ]
-        dist, hidden = self.actorcritic.actor(observation, hidden)
+        embedded_observation, new_hidden = self.actorcritic.forward(observation, hidden)
+        dist, _ = self.actorcritic.actor(embedded_observation, hidden)
         action = dist.sample()
         if self.continuous:
             if self.config["LAW"] == "normal":
@@ -290,7 +291,7 @@ class ActorCritic(nn.Module):
             return action.detach().data.numpy()[0][0], hidden
         else:
             action = action.reshape(-1, 1)
-            return action.item(), hidden
+            return action.item(), new_hidden
 
     def update_policy(
         self,
@@ -324,41 +325,39 @@ class ActorCritic(nn.Module):
 
         state = t(state).reshape(1, -1)[:, None, :]
         next_state = t(next_state).reshape(1, -1)[:, None, :]
-        dist, hidden = self.actorcritic.actor(
-            state,
+        embedded_obs, hidden = self.actorcritic.forward(state, hidden)
+        embedded_next_obs, next_hidden = self.actorcritic.forward(
+            next_state, next_hidden
+        )
+        dist, _ = self.actorcritic.actor(
+            embedded_obs,
             hidden,
         )
-        if self.config["LAW"] == "beta":
-            # minmax scaling to fit into (0,1)
-            action = (action - self.env.action_space.low) / (
-                self.env.action_space.high - self.env.action_space.low
-            ) + ZERO
 
         log_probs = dist.log_prob(t(np.array([action])))
 
         empirical_return = n_step_return + (1 - done) * self.config[
             "GAMMA"
-        ] ** self.config["N_STEPS"] * self.actorcritic.critic(next_state, next_hidden)
-        estimated_return = self.actorcritic.critic(state, hidden)
+        ] ** self.config["N_STEPS"] * self.actorcritic.critic(
+            embedded_next_obs, next_hidden
+        )
+        estimated_return = self.actorcritic.critic(embedded_obs, hidden)
 
         # Target scaling
-        self.scaler.partial_fit(empirical_return.detach().numpy().flatten())
+        if self.scaler is not None:
+            self.scaler.partial_fit(empirical_return.detach().numpy().flatten())
         if (
             (self.scaler is not None)
             and (self.config["TARGET_SCALING"])
             and (self.index > 2)
             and self.index <= self.config["LEARNING_START"]
         ):
-
-            empirical_return = t(
-                self.scaler.transform(empirical_return.detach().numpy().flatten())
-            )
-            # empirical_return = self.scaler.pytorch_transform(empirical_return)
+            empirical_return = self.scaler.pytorch_transform(empirical_return)
 
         advantage = empirical_return - estimated_return
+
         with torch.no_grad():
             KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
-        self.old_dist = dist
 
         # Losses (be careful that all its components are torch tensors with grad on)
         critic_loss = advantage.pow(2)
@@ -374,8 +373,8 @@ class ActorCritic(nn.Module):
         )
         if self.index > self.config["LEARNING_START"]:
             self.optimizer.zero_grad()
-            loss.backward(retain_graph=True)
-            # self.gradient_clipping()
+            loss.backward(retain_graph=False)
+            self.gradient_clipping()
             self.optimizer.step()
 
         # KPIs
@@ -383,6 +382,7 @@ class ActorCritic(nn.Module):
             empirical_return.detach().numpy().flatten(),
             advantage.detach().numpy().flatten(),
         )
+        self.old_dist = dist
 
         # Logging
         if self.writer:
@@ -411,6 +411,7 @@ class ActorCritic(nn.Module):
                     "Train/total loss": loss,
                     "Train/explained variance": explained_variance,
                     "Train/KL divergence": KL_divergence,
+                    "Train/learning rate": self.lr_scheduler.transform(self.index),
                 },
                 commit=False,
             )

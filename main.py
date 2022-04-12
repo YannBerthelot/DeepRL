@@ -17,7 +17,7 @@ if __name__ == "__main__":
     config_0["name"] = "MLP"
 
     for i, config in enumerate([config_0]):
-        for experiment in range(4, config["N_EXPERIMENTS"] + 1):
+        for experiment in range(1, config["N_EXPERIMENTS"] + 1):
             if config["logging"] == "wandb":
                 run = wandb.init(
                     project="LunarLander A2C RNN discrete",
