@@ -212,66 +212,40 @@ class A2C(Agent):
             nb_epoch (int): Number of epochs to train on.
         """
         # Early stopping
-        constant_reward_counter = 0
-        old_reward_sum = 0
+        self.constant_reward_counter = 0
+        self.old_reward_sum = 0
 
         # Init training
-        episode = 1
+        self.episode = 1
         t = 1
         t_old = 0
         action_list = []
+        self.constant_reward_counter = 0
 
         # Iterate over epochs
         pbar = tqdm(total=nb_timestep, initial=1)
 
         while t <= nb_timestep:
-            action_list_episode = []
+            # tqdm stuff
             pbar.update(t - t_old)
             t_old = t
 
-            # Init reward_sum and variables for the episode
             rewards = []
             done, obs = False, env.reset()
-
-            if self.config["RECURRENT"]:
-                # Add the previous action to the observation
-                if self.config["ADD_ACTION"]:
-                    obs = np.append(obs, 0)
-                hidden = self.network.get_initial_states()
-            else:
-                hidden = None
+            hidden = self.network.get_initial_states()
 
             if self.config["SCALING"]:
                 self.obs_scaler.partial_fit(obs)
 
-            # Loop through the episode
             t_episode = 0
             while not done:
-                # Select the action using the actor network
-
                 action, next_hidden = self.select_action(obs, hidden)
-
-                action_list_episode.append(action)
-
-                # Step the environment
                 next_obs, reward, done, _ = env.step(action)
-                if self.config["RECURRENT"] and self.config["ADD_ACTION"]:
-                    # Add the previous action to the observation
-                    next_obs = np.append(next_obs, action)
                 rewards.append(reward)
-                # Scaling
-                if self.config["SCALING"]:
-                    if t >= self.config["LEARNING_START"]:
-                        # self.obs_scaler.partial_fit(next_obs)
-                        # self.reward_scaler.partial_fit(np.array([reward]))
-                        reward = self.reward_scaler.transform(np.array([reward]))[0]
-                        next_obs = self.obs_scaler.transform(next_obs)
-                    else:
-                        self.obs_scaler.partial_fit(next_obs)
-                        self.reward_scaler.partial_fit(np.array([reward]))
+                reward, next_obs = self.scaling(reward, next_obs)
 
                 # Add the experience collected to the memory for the n-step processing
-                if t >= 0:  # self.config["LEARNING_START"]:
+                if t >= self.config["LEARNING_START"]:
                     self.memory.add(obs, action, reward, done, hidden)
 
                     # When we have collected n steps we can start learning
@@ -284,7 +258,6 @@ class A2C(Agent):
                             old_done,
                             old_hidden,
                         ) = self.memory.compute_return()
-                        # Run the n-step A2C update
                         if not done:
                             self.network.update_policy(
                                 old_obs,
@@ -295,113 +268,26 @@ class A2C(Agent):
                                 hidden,
                                 done,
                             )
-                        # Clear the used experience from the memory
                         self.memory.remove_first_step()
-
-                # Update timesteps counter, reward sum and move on to the next observation
                 t += 1
                 t_episode += 1
                 obs = next_obs
-
                 hidden = next_hidden
 
-            # Clear memory to start a new episode
             self.memory.clear()
             reward_sum = np.sum(rewards)
+
             # Track best model and save it
-            if reward_sum >= self.best_episode_reward:
-                self.best_episode_reward = reward_sum
-                if self.config["logging"] == "wandb":
-                    wandb.run.summary["Train/best reward sum"] = reward_sum
-                    artifact = wandb.Artifact(f"{self.comment}_best", type="model")
+            self.save_if_best(reward_sum)
+            if self.early_stopping(reward_sum):
+                break
 
-                self.save(f"{self.comment}_best")
+            self.old_reward_sum = reward_sum
+            self.episode_logging(rewards, reward_sum)
+            self.episode += 1
 
-            elif reward_sum == old_reward_sum:
-                constant_reward_counter += 1
-                if constant_reward_counter > self.config["EARLY_STOPPING_STEPS"]:
-                    print(
-                        f'Early stopping due to constant reward for {self.config["EARLY_STOPPING_STEPS"]} steps'
-                    )
-                    break
-            else:
-                constant_reward_counter = 0
-
-            old_reward_sum = reward_sum
-            # Log performances in Tensorboard
-            if self.config["logging"] == "wandb":
-                wandb.log(
-                    {
-                        "Train/Episode_sum_of_rewards": reward_sum,
-                        "Train/Episode": episode,
-                        "Actions": wandb.Histogram(action_list_episode),
-                    },
-                    step=t,
-                    commit=True,
-                )
-            elif self.config["logging"] == "tensorboard":
-                self.network.writer.add_scalar(
-                    "Reward/Episode_sum_of_rewards", reward_sum, episode
-                )
-                self.network.writer.add_histogram(
-                    "Reward distribution",
-                    np.array(
-                        [
-                            np.mean(rewards),
-                            np.std(rewards),
-                            -np.std(rewards),
-                            max(rewards),
-                            min(rewards),
-                        ]
-                    ),
-                    episode,
-                )
-            # Next episode
-            episode += 1
-            action_list.extend(action_list_episode)
-        if self.config["logging"] == "tensorboard":
-            self.network.writer.add_hparams(
-                self.config,
-                {
-                    "train mean reward": np.mean(rewards),
-                    "train std reward": np.std(rewards),
-                    "train max reward": max(rewards),
-                    "train test reward": min(rewards),
-                },
-                run_name="test",
-            )
         pbar.close()
-        if self.config["logging"] == "wandb":
-            # Add a file to the artifact's contents
-            artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
-
-            # Save the artifact version to W&B and mark it as the output of this run
-            self.run.log_artifact(artifact)
-
-            artifact = wandb.Artifact(f"{self.comment}_obs_scaler", type="scaler")
-
-            # Add a file to the artifact's contents
-            pickle.dump(
-                self.obs_scaler,
-                open(f"data/{self.comment}_obs_scaler.pkl", "wb"),
-            )
-            artifact.add_file(f"data/{self.comment}_obs_scaler.pkl")
-
-            # Save the artifact version to W&B and mark it as the output of this run
-            self.run.log_artifact(artifact)
-            if not self.config["CONTINUOUS"]:
-                action_frequency = (
-                    pd.Series(action_list).value_counts().values.reshape(-1, 1).tolist()
-                )
-                data = action_frequency
-                table = wandb.Table(data=data, columns=["actions"])
-                wandb.log(
-                    {
-                        "Action distribution": wandb.plot.histogram(
-                            table, "actions", title="Action selection distribution"
-                        )
-                    }
-                )
+        self.train_logging()
 
     def test(
         self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None
@@ -494,3 +380,85 @@ class A2C(Agent):
             name (str, optional): Name of the save model file.
         """
         self.network.load(name)
+
+    def save_if_best(self, reward_sum):
+        if reward_sum >= self.best_episode_reward:
+            self.best_episode_reward = reward_sum
+            if self.config["logging"] == "wandb":
+                wandb.run.summary["Train/best reward sum"] = reward_sum
+                artifact = wandb.Artifact(f"{self.comment}_best", type="model")
+
+            self.save(f"{self.comment}_best")
+
+    def early_stopping(self, reward_sum):
+        if reward_sum == self.old_reward_sum:
+            self.constant_reward_counter += 1
+            if self.constant_reward_counter > self.config["EARLY_STOPPING_STEPS"]:
+                print(
+                    f'Early stopping due to constant reward for {self.config["EARLY_STOPPING_STEPS"]} steps'
+                )
+                return True
+        else:
+            self.constant_reward_counter = 0
+        return False
+
+    def episode_logging(self, rewards, reward_sum):
+        if self.config["logging"] == "wandb":
+            wandb.log(
+                {
+                    "Train/Episode_sum_of_rewards": reward_sum,
+                    "Train/Episode": self.episode,
+                },
+                step=self.t,
+                commit=True,
+            )
+        elif self.config["logging"] == "tensorboard":
+            self.network.writer.add_scalar(
+                "Reward/Episode_sum_of_rewards", reward_sum, self.episode
+            )
+            self.network.writer.add_histogram(
+                "Reward distribution",
+                np.array(
+                    [
+                        np.mean(rewards),
+                        np.std(rewards),
+                        -np.std(rewards),
+                        max(rewards),
+                        min(rewards),
+                    ]
+                ),
+                self.episode,
+            )
+
+    def train_logging(self):
+        if self.config["logging"] == "wandb":
+            # Add a file to the artifact's contents
+            artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
+
+            # Save the artifact version to W&B and mark it as the output of this run
+            self.run.log_artifact(artifact)
+
+            artifact = wandb.Artifact(f"{self.comment}_obs_scaler", type="scaler")
+
+            # Add a file to the artifact's contents
+            pickle.dump(
+                self.obs_scaler,
+                open(f"data/{self.comment}_obs_scaler.pkl", "wb"),
+            )
+            artifact.add_file(f"data/{self.comment}_obs_scaler.pkl")
+
+            # Save the artifact version to W&B and mark it as the output of this run
+            self.run.log_artifact(artifact)
+
+    def scaling(self, reward, next_obs):
+        # Scaling
+        if self.config["SCALING"]:
+            if self.t >= self.config["LEARNING_START"]:
+                # self.obs_scaler.partial_fit(next_obs)
+                # self.reward_scaler.partial_fit(np.array([reward]))
+                reward = self.reward_scaler.transform(np.array([reward]))[0]
+                next_obs = self.obs_scaler.transform(next_obs)
+            else:
+                self.obs_scaler.partial_fit(next_obs)
+                self.reward_scaler.partial_fit(np.array([reward]))
+        return reward, next_obs

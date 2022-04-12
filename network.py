@@ -467,28 +467,31 @@ class ActorCritic(nn.Module):
         print(self.actorcritic)
 
     def get_initial_states(self):
-        h_0, c_0 = None, None
+        if self.config["RECURRENT":]
+            h_0, c_0 = None, None
 
-        h_0 = torch.zeros(
-            (
-                self.actorcritic.recurrent_layer.num_layers,
-                1,
-                self.actorcritic.recurrent_layer.hidden_size,
-            ),
-            dtype=torch.float,
-        )
-        h_0 = h_0.to(device=self.device)
+            h_0 = torch.zeros(
+                (
+                    self.actorcritic.recurrent_layer.num_layers,
+                    1,
+                    self.actorcritic.recurrent_layer.hidden_size,
+                ),
+                dtype=torch.float,
+            )
+            h_0 = h_0.to(device=self.device)
 
-        c_0 = torch.zeros(
-            (
-                self.actorcritic.recurrent_layer.num_layers,
-                1,
-                self.actorcritic.recurrent_layer.hidden_size,
-            ),
-            dtype=torch.float,
-        )
-        c_0 = c_0.to(device=self.device)
-        return (h_0, c_0)
+            c_0 = torch.zeros(
+                (
+                    self.actorcritic.recurrent_layer.num_layers,
+                    1,
+                    self.actorcritic.recurrent_layer.hidden_size,
+                ),
+                dtype=torch.float,
+            )
+            c_0 = c_0.to(device=self.device)
+            return (h_0, c_0)
+        else:
+            return None
 
     def fit_transform(self, input):
         self.scaler.partial_fit(input)
