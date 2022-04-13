@@ -10,7 +10,8 @@ from buffer import RolloutBuffer
 
 # Network creator tool
 from network_utils import get_network_from_architecture, t, compute_KL_divergence
-from utils import SimpleStandardizer, get_device, LinearSchedule
+from utils import get_device, LinearSchedule
+from normalize import SimpleStandardizer
 
 # Numpy
 import numpy as np
@@ -138,9 +139,17 @@ class ActorCriticRecurrentNetworks(nn.Module):
             logstds_param = nn.Parameter(torch.full((action_dim,), 0.1))
             self.register_parameter("logstds", logstds_param)
 
-    def forward(
-        self, state: torch.Tensor, hidden: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def LSTM(self, x, hidden):
+        x = torch.relu(x)
+        x = x.view(
+            -1,
+            1,
+            eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        )
+        x, hidden = self.recurrent_layer(x, hidden)
+        return x, hidden
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Layers shared by the actor and the critic:
         -Some FCs
@@ -155,12 +164,36 @@ class ActorCriticRecurrentNetworks(nn.Module):
         """
 
         x = self.common_layers(state)
-        if self.recurrent:
-            # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
-            # x = torch.relu(x)
-            x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
-            x, hidden = self.recurrent_layer(x, hidden)
-        return x, hidden
+
+        # if self.recurrent:
+        #     if x.shape[0] != self.config["BUFFER_SIZE"]:
+        #         x = torch.stack([x for i in range(self.config["BUFFER_SIZE"])])
+        #     if h.shape[0] != self.config["BUFFER_SIZE"]:
+        #         h = torch.stack([h for i in range(self.config["BUFFER_SIZE"])]).view(
+        #             1,
+        #             self.config["BUFFER_SIZE"],
+        #             eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #         )
+        #         c = torch.stack([c for i in range(self.config["BUFFER_SIZE"])]).view(
+        #             1,
+        #             self.config["BUFFER_SIZE"],
+        #             eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #         )
+        #     hidden = (h, c)
+        #     # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
+        #     x = torch.relu(x)
+        #     x = x.view(
+        #         self.config["BUFFER_SIZE"],
+        #         1,
+        #         eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #     )
+        #     x, hidden = self.recurrent_layer(x, hidden)
+        #     h = hidden[0]
+        #     c = hidden[1]
+        #     print(h.shape, h)
+        #     hidden = (h[0], c[0])
+        #     print("x out", x.shape)
+        return x
 
     def actor(
         self, state: torch.Tensor, hidden: torch.Tensor
@@ -194,7 +227,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
             dist = torch.distributions.Categorical(probs=x)
             return dist, hidden
 
-    def critic(self, state: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
+    def critic(self, state: torch.Tensor) -> torch.Tensor:
         """
         Returns the value estimation for the given state and the current critic parameters
 
@@ -208,7 +241,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         # with torch.no_grad():
         # embedded_obs, _ = self.forward(state, hidden)
         value = self.critic_layers(state)
-        return value.reshape(-1, 1)
+        return value
 
 
 class ActorCritic(nn.Module):
@@ -237,8 +270,12 @@ class ActorCritic(nn.Module):
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
         self.optimizer = optim.Adam(
             self.actorcritic.parameters(),
-            lr=config["LEARNING_RATE"],
+            lr=self.config["LEARNING_RATE"],
         )
+        # self.critic_optimizer = optim.Adam(
+        #     self.actorcritic.critic_layers.parameters(),
+        #     lr=self.config["LEARNING_RATE"],
+        # )
 
         self.target_var_scaler = SimpleStandardizer()
         self.advantages_var_scaler = SimpleStandardizer()
@@ -269,19 +306,16 @@ class ActorCritic(nn.Module):
             np.array : The selected action(s)
         """
 
-        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
-            :, None, :
-        ]
-        embedded_observation, new_hidden = self.actorcritic.forward(observation, hidden)
+        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)
+        embedded_observation, new_hidden = self.actorcritic.forward(observation), None
+        if self.config["RECURRENT"]:
+            embedded_observation, new_hidden = self.actorcritic.LSTM(
+                embedded_observation, hidden
+            )
         dist, _ = self.actorcritic.actor(embedded_observation, hidden)
         action = dist.sample()
         if self.continuous:
             if self.config["LAW"] == "normal":
-                # action = (
-                #     action
-                #     * (self.env.action_space.high - self.env.action_space.low)
-                #     + self.env.action_space.low
-                # )
                 action = np.clip(
                     action, self.env.action_space.low, self.env.action_space.high
                 )
@@ -292,13 +326,11 @@ class ActorCritic(nn.Module):
                 )
             return action.detach().data.numpy()[0][0], hidden
         else:
-            action = action.reshape(-1, 1)
-            return action.item(), new_hidden
+            assert len(action) == 1, "Bug action"
+            action = action.flatten()[0]
+            return action, new_hidden
 
-    def update_policy(
-        self,
-        rollout: RolloutBuffer,
-    ) -> None:
+    def update_policy(self, rollout) -> None:
         """
         Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
 
@@ -313,76 +345,125 @@ class ActorCritic(nn.Module):
 
         # For logging purposes
         self.index += 1
-
-        self.optimizer = optim.Adam(
-            self.actorcritic.parameters(),
-            lr=self.lr_scheduler.transform(self.index),
-        )
+        pre_latent_states = self.actorcritic.forward(t(rollout.states))
+        pre_latent_next_states = self.actorcritic.forward(t(rollout.next_states))
         if self.config["RECURRENT"]:
-            embedded_obs, hidden = self.actorcritic.forward(
-                t(rollout.states), t(rollout.hiddens)
+            hiddens = [
+                (
+                    rollout.hiddens_h[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                    rollout.hiddens_c[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                )
+                for i in range(len(rollout.hiddens_c))
+            ]
+            next_hiddens = [
+                (
+                    rollout.next_hiddens_h[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                    rollout.next_hiddens_c[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                )
+                for i in range(len(rollout.next_hiddens_c))
+            ]
+            latent_states = torch.stack(
+                [
+                    self.actorcritic.LSTM(state, hidden)[0]
+                    for (state, hidden) in zip(pre_latent_states, hiddens)
+                ]
+            ).view(
+                self.config["BUFFER_SIZE"],
+                eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
             )
-            embedded_next_obs, next_hidden = self.actorcritic.forward(
-                t(rollout.next_states), t(rollout.next_hiddens)
+            latent_next_states = torch.stack(
+                [
+                    self.actorcritic.LSTM(state, hidden)[0]
+                    for (state, hidden) in zip(pre_latent_next_states, next_hiddens)
+                ]
+            ).view(
+                self.config["BUFFER_SIZE"],
+                eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
             )
         else:
-            embedded_obs, hidden = self.actorcritic.forward(t(rollout.states), None)
-            embedded_next_obs, next_hidden = self.actorcritic.forward(
-                t(rollout.next_states), None
-            )
+            latent_states = pre_latent_states
+            latent_next_states = pre_latent_next_states
+
         dist, _ = self.actorcritic.actor(
-            embedded_obs,
-            hidden,
+            latent_states,
+            None,
         )
 
-        log_probs = dist.log_prob(t(rollout.actions))
+        actions = t(np.array(rollout.actions).reshape(1, -1))
+        rewards = t(np.array(rollout.rewards).reshape(-1, 1))
+        dones = t(np.array(rollout.dones).reshape(-1, 1))
 
-        empirical_return = t(rollout.returns) + (1 - t(rollout.dones)) * self.config[
-            "GAMMA"
-        ] ** self.config["N_STEPS"] * self.actorcritic.critic(
-            embedded_next_obs, next_hidden
+        log_probs = dist.log_prob(actions).reshape(-1, 1)
+
+        estimated_next_return = self.actorcritic.critic(latent_next_states)
+
+        empirical_return = (
+            rewards
+            + (1 - dones)
+            * self.config["GAMMA"] ** self.config["N_STEPS"]
+            * estimated_next_return
         )
-        estimated_return = self.actorcritic.critic(embedded_obs, hidden)
-
-        # Target scaling
-        if self.scaler is not None:
-            self.scaler.partial_fit(empirical_return.detach().numpy().flatten())
-        if (
-            (self.scaler is not None)
-            and (self.config["TARGET_SCALING"])
-            and (self.index > 2)
-            and self.index <= self.config["LEARNING_START"]
-        ):
-            empirical_return = self.scaler.pytorch_transform(empirical_return)
-
+        estimated_return = self.actorcritic.critic(latent_states)
         advantages = empirical_return - estimated_return
-        # with torch.no_grad():
-        #     KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
+        if self.config["NORMALIZE_ADVANTAGES"]:
+            advantages = torch.div(
+                torch.sub(advantages, advantages.mean()),
+                torch.add(advantages.std(), 1e-8),
+            )
+        if self.old_dist is not None:
+            with torch.no_grad():
+                KL_divergence = compute_KL_divergence(self.old_dist, dist)
+        else:
+            KL_divergence = 0
 
         # Losses (be careful that all its components are torch tensors with grad on)
-        critic_loss = advantages.pow(2).mean()
-        actor_loss = (-log_probs * advantages).mean()
         entropy_loss = -dist.entropy().mean()
-        kl_loss = 0  # -KL_divergence
-
+        critic_loss = advantages.pow(2).mean()
+        actor_loss = -(log_probs * advantages.detach()).mean()
+        kl_loss = -KL_divergence
+        loss = 0
         loss = (
             actor_loss
             + self.config["VALUE_FACTOR"] * critic_loss
             + self.config["ENTROPY_FACTOR"] * entropy_loss
             + self.config["KL_FACTOR"] * kl_loss
         )
-        if self.index > self.config["LEARNING_START"]:
-            self.optimizer.zero_grad()
-            loss.backward(retain_graph=False)
+
+        self.optimizer.zero_grad()
+        loss.backward(retain_graph=False)
+        if self.config["GRADIENT_CLIPPING"] is not None:
             self.gradient_clipping()
-            self.optimizer.step()
+        self.optimizer.step()
 
         # KPIs
-        # explained_variance = self.compute_explained_variance(
-        #     empirical_return.detach().numpy().flatten(),
-        #     advantage.detach().numpy().flatten(),
-        # )
-        explaied_variance = 0
+        explained_variance = self.compute_explained_variance(
+            empirical_return.detach().numpy(),
+            advantages.detach().numpy(),
+        )
         self.old_dist = dist
 
         # Logging
@@ -397,10 +478,10 @@ class ActorCritic(nn.Module):
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
                 self.writer.add_scalar("Train/total loss", loss, self.index)
-                # self.writer.add_scalar(
-                #     "Train/explained variance", explained_variance, self.index
-                # )
-                # self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
+                self.writer.add_scalar(
+                    "Train/explained variance", explained_variance, self.index
+                )
+                self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
@@ -410,8 +491,8 @@ class ActorCritic(nn.Module):
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
                     "Train/total loss": loss,
-                    # "Train/explained variance": explained_variance,
-                    # "Train/KL divergence": KL_divergence,
+                    "Train/explained variance": explained_variance,
+                    "Train/KL divergence": KL_divergence,
                     "Train/learning rate": self.lr_scheduler.transform(self.index),
                 },
                 commit=False,
@@ -506,8 +587,9 @@ class ActorCritic(nn.Module):
         )  # gradient clipping
 
     def compute_explained_variance(self, target, advantage):
-        self.target_var_scaler.partial_fit(target)
-        self.advantages_var_scaler.partial_fit(advantage)
+        for x, y in zip(target, advantage):
+            self.target_var_scaler.partial_fit(x)
+            self.advantages_var_scaler.partial_fit(y)
 
         var_targets = self.target_var_scaler.std
         var_advantages = self.advantages_var_scaler.std

@@ -89,7 +89,7 @@ def get_network_from_architecture(
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))
         if mode == "actor":
-            layers.append(nn.Softmax(dim=2))
+            layers.append(nn.Softmax(dim=-1))
         # layers[-1].weight.data.fill_(0.00)
         if final_activation is not None:
             layers = add_final_layer(final_activation, layers)

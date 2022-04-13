@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 class RolloutBuffer:
@@ -12,7 +13,7 @@ class RolloutBuffer:
         state,
         next_state,
         action,
-        n_step_return,
+        reward,
         done,
         hidden=None,
         next_hidden=None,
@@ -21,31 +22,54 @@ class RolloutBuffer:
             self.states = np.array([state])
             self.next_states = np.array([next_state])
             self.actions = np.array([action])
-            self.returns = np.array([n_step_return])
+            self.rewards = np.array([reward])
             self.dones = np.array([done])
-            self.hiddens = np.array([hidden])
-            self.next_hiddens = np.array([next_hidden])
+            if hidden is not None:
+                self.hiddens_h = torch.cat(
+                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
+                )
+                self.next_hiddens_h = torch.cat(
+                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
+                )
+                self.hiddens_c = torch.cat(
+                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
+                )
+                self.next_hiddens_c = torch.cat(
+                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
+                )
         else:
             self.states = np.append(self.states, np.array([state]), axis=0)
             self.next_states = np.append(
                 self.next_states, np.array([next_state]), axis=0
             )
             self.actions = np.append(self.actions, np.array([action]), axis=0)
-            self.returns = np.append(self.returns, np.array([n_step_return]), axis=0)
+            self.rewards = np.append(self.rewards, np.array([reward]), axis=0)
             self.dones = np.append(self.dones, np.array([done]), axis=0)
-            self.hiddens = np.append(self.hiddens, np.array([hidden]), axis=0)
-            self.next_hiddens = np.append(
-                self.next_hiddens, np.array([next_hidden]), axis=0
-            )
+            if hidden is not None:
+                self.hiddens_h = torch.cat(
+                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
+                )
+                self.next_hiddens_h = torch.cat(
+                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
+                )
+                self.hiddens_c = torch.cat(
+                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
+                )
+                self.next_hiddens_c = torch.cat(
+                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
+                )
 
     def reset(self):
         self.states = np.array([])
         self.next_states = np.array([])
         self.actions = np.array([])
-        self.returns = np.array([])
+        self.rewards = np.array([])
         self.dones = np.array([])
-        self.hiddens = np.array([])
-        self.next_hiddens = np.array([])
+        self.returns = np.array([])
+        self.hiddens_h = torch.Tensor([])
+        self.next_hiddens_h = torch.Tensor([])
+        self.hiddens_c = torch.Tensor([])
+        self.next_hiddens_c = torch.Tensor([])
 
     def show(self):
         print(
@@ -55,8 +79,8 @@ class RolloutBuffer:
             self.next_states,
             "actions",
             self.actions,
-            "returns",
-            self.returns,
+            "rewards",
+            self.rewards,
             "dones",
             self.dones,
             "hiddens",
@@ -99,10 +123,10 @@ class Memory:
 
     def compute_return(self):
         n_step_return = 0
-        for i, reward in enumerate(reversed(self.steps["rewards"])):
+        for i, reward in enumerate(reversed(self.steps["rewards"][:-1])):
             n_step_return = (
                 reward
-                + (1.0 - self.steps["dones"][i])
+                + 1  # (1.0 - self.steps["dones"][i])
                 * self.config["GAMMA"] ** i
                 * n_step_return
             )
@@ -132,3 +156,6 @@ class Memory:
 
     def __len__(self):
         return len(self.steps["rewards"])
+
+    def show(self):
+        print(self.steps)
