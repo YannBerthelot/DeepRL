@@ -31,21 +31,19 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## To-do
 
-- [x] Merge n_steps A2C and LSTM A2C
-- [x] Merge A2C and n_steps A2C
 - [x] Add normalization and standardization of states and rewards
 - [x] Add normalization and standardization of target
 - [x] Add entropy
-- [ ] Add units tests
 - [x] Add policy and target networks
 - [x] Add explained variance
+- [x] Add schedules for parameters (e.g. learning rate)
+- [x] Add LSTM (multi-layers included and batch support included)
+- [x] Add rollout buffer and switch to batch learning
+      Priority
+- [ ] Rework continuous actions to handle batch
+      Optionnal
+- [ ] Re-add n-step A2C (that works with batch)
 - [ ] Add testing during training to select agent to save
 - [ ] Rework action selection logging
-- [x] Add schedules for parameters (e.g. learning rate)
 - [ ] Add tests (cf : https://andyljones.com/posts/rl-debugging.html)
-- [x] Add policy and target networks
-- [ ] Add scheduler for learning rate (or other parameters)
-- [ ] Add explained variance to the KPIs
 - [ ] Package the code into a Python lib
-- [ ] Solve the n_step_return problem
-- [ ] Add rollout buffer and switch to batch learning
