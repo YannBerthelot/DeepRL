@@ -139,9 +139,17 @@ class ActorCriticRecurrentNetworks(nn.Module):
             logstds_param = nn.Parameter(torch.full((action_dim,), 0.1))
             self.register_parameter("logstds", logstds_param)
 
-    def forward(
-        self, state: torch.Tensor, hidden: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def LSTM(self, x, hidden):
+        x = torch.relu(x)
+        x = x.view(
+            -1,
+            1,
+            eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        )
+        x, hidden = self.recurrent_layer(x, hidden)
+        return x, hidden
+
+    def forward(self, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Layers shared by the actor and the critic:
         -Some FCs
@@ -154,13 +162,38 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             Tuple[Torch.Tensor, Torch.Tensor]: The processed state and the new hidden state of the LSTM
         """
+
         x = self.common_layers(state)
+
         # if self.recurrent:
+        #     if x.shape[0] != self.config["BUFFER_SIZE"]:
+        #         x = torch.stack([x for i in range(self.config["BUFFER_SIZE"])])
+        #     if h.shape[0] != self.config["BUFFER_SIZE"]:
+        #         h = torch.stack([h for i in range(self.config["BUFFER_SIZE"])]).view(
+        #             1,
+        #             self.config["BUFFER_SIZE"],
+        #             eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #         )
+        #         c = torch.stack([c for i in range(self.config["BUFFER_SIZE"])]).view(
+        #             1,
+        #             self.config["BUFFER_SIZE"],
+        #             eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #         )
+        #     hidden = (h, c)
         #     # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
-        #     # x = torch.relu(x)
-        #     x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
+        #     x = torch.relu(x)
+        #     x = x.view(
+        #         self.config["BUFFER_SIZE"],
+        #         1,
+        #         eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+        #     )
         #     x, hidden = self.recurrent_layer(x, hidden)
-        return x, hidden
+        #     h = hidden[0]
+        #     c = hidden[1]
+        #     print(h.shape, h)
+        #     hidden = (h[0], c[0])
+        #     print("x out", x.shape)
+        return x
 
     def actor(
         self, state: torch.Tensor, hidden: torch.Tensor
@@ -274,7 +307,11 @@ class ActorCritic(nn.Module):
         """
 
         observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)
-        embedded_observation, new_hidden = self.actorcritic.forward(observation, hidden)
+        embedded_observation, new_hidden = self.actorcritic.forward(observation), None
+        if self.config["RECURRENT"]:
+            embedded_observation, new_hidden = self.actorcritic.LSTM(
+                embedded_observation, hidden
+            )
         dist, _ = self.actorcritic.actor(embedded_observation, hidden)
         action = dist.sample()
         if self.continuous:
@@ -308,13 +345,74 @@ class ActorCritic(nn.Module):
 
         # For logging purposes
         self.index += 1
-        latent_states, _ = self.actorcritic.forward(t(rollout.states), None)
-        latent_next_states, _ = self.actorcritic.forward(t(rollout.next_states), None)
+        pre_latent_states = self.actorcritic.forward(t(rollout.states))
+        pre_latent_next_states = self.actorcritic.forward(t(rollout.next_states))
+        if self.config["RECURRENT"]:
+            hiddens = [
+                (
+                    rollout.hiddens_h[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                    rollout.hiddens_c[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                )
+                for i in range(len(rollout.hiddens_c))
+            ]
+            next_hiddens = [
+                (
+                    rollout.next_hiddens_h[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                    rollout.next_hiddens_c[i]
+                    .view(
+                        -1,
+                        1,
+                        eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+                    )
+                    .detach(),
+                )
+                for i in range(len(rollout.next_hiddens_c))
+            ]
+            latent_states = torch.stack(
+                [
+                    self.actorcritic.LSTM(state, hidden)[0]
+                    for (state, hidden) in zip(pre_latent_states, hiddens)
+                ]
+            ).view(
+                self.config["BUFFER_SIZE"],
+                eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+            )
+            latent_next_states = torch.stack(
+                [
+                    self.actorcritic.LSTM(state, hidden)[0]
+                    for (state, hidden) in zip(pre_latent_next_states, next_hiddens)
+                ]
+            ).view(
+                self.config["BUFFER_SIZE"],
+                eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+            )
+        else:
+            latent_states = pre_latent_states
+            latent_next_states = pre_latent_next_states
 
         dist, _ = self.actorcritic.actor(
             latent_states,
             None,
         )
+
         actions = t(np.array(rollout.actions).reshape(1, -1))
         rewards = t(np.array(rollout.rewards).reshape(-1, 1))
         dones = t(np.array(rollout.dones).reshape(-1, 1))
@@ -356,7 +454,7 @@ class ActorCritic(nn.Module):
         )
 
         self.optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=False)
         self.gradient_clipping()
         self.optimizer.step()
 

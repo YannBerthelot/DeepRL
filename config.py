@@ -21,17 +21,17 @@ config = {
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0.0,
     "KL_FACTOR": 0.0000,
-    "LEARNING_START": 1e1,
+    "LEARNING_START": 1e2,
     # Specific
     "N_STEPS": 1,
     # NETWORKS
-    "RECURRENT": False,
-    "GRADIENT_CLIPPING": 0.5,
+    "RECURRENT": True,
+    "GRADIENT_CLIPPING": 5e2,
     "LEARNING_RATE": 1e-3,
     "LEARNING_RATE_END": 1e-5,
     # RNN
     "HIDDEN_SIZE": 64,
-    "HIDDEN_LAYERS": 1,
+    "HIDDEN_LAYERS": 2,
     "COMMON_NN_ARCHITECTURE": "[64]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
@@ -49,13 +49,12 @@ config = {
     # Logging
     "logging": "tensorboard",
     # Normalization
-    "SCALING": False,
+    "SCALING": True,
     "SCALING_METHOD": "standardize",
     "TARGET_SCALING": False,
     # Continuous
     "CONTINUOUS": False,
     "LAW": "normal",
-    "ADD_ACTION": False,
     "BUFFER_SIZE": 5,
-    "NORMALIZE_ADVANTAGES": True,
+    "NORMALIZE_ADVANTAGES": False,
 }
