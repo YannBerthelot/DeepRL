@@ -102,17 +102,17 @@ class A2C(Agent):
 
             done, obs, rewards = False, env.reset(), []
             hidden = self.network.get_initial_states()
-
             while not done:
                 if self.t > self.config["LEARNING_START"]:
                     action, next_hidden = self.select_action(obs, hidden)
+
                     action = action.detach().data.numpy()
                 else:
                     action, next_hidden = self.env.action_space.sample(), hidden
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
                 next_obs, reward = self.scaling(next_obs, reward)
-                if self.t > self.config["LEARNING_START"]:
+                if self.t >= self.config["LEARNING_START"]:
                     self.rollout.add(
                         obs, next_obs, action, reward, done, hidden, next_hidden
                     )

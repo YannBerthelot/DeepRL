@@ -21,7 +21,7 @@ config = {
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0.0,
     "KL_FACTOR": 0.0000,
-    "LEARNING_START": 1e2,
+    "LEARNING_START": 1e0,
     # Specific
     "N_STEPS": 1,
     # NETWORKS

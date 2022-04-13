@@ -25,13 +25,17 @@ class RolloutBuffer:
             self.rewards = np.array([reward])
             self.dones = np.array([done])
             if hidden is not None:
-                self.hiddens_h = torch.cat((self.hiddens_h, hidden[0]), 0)
-                self.next_hiddens_h = torch.cat(
-                    (self.next_hiddens_h, next_hidden[0]), 0
+                self.hiddens_h = torch.cat(
+                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
                 )
-                self.hiddens_c = torch.cat((self.hiddens_c, hidden[1]), 0)
+                self.next_hiddens_h = torch.cat(
+                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
+                )
+                self.hiddens_c = torch.cat(
+                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
+                )
                 self.next_hiddens_c = torch.cat(
-                    (self.next_hiddens_c, next_hidden[1]), 0
+                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
                 )
         else:
             self.states = np.append(self.states, np.array([state]), axis=0)
@@ -42,13 +46,17 @@ class RolloutBuffer:
             self.rewards = np.append(self.rewards, np.array([reward]), axis=0)
             self.dones = np.append(self.dones, np.array([done]), axis=0)
             if hidden is not None:
-                self.hiddens_h = torch.cat((self.hiddens_h, hidden[0]), 0)
-                self.next_hiddens_h = torch.cat(
-                    (self.next_hiddens_h, next_hidden[0]), 0
+                self.hiddens_h = torch.cat(
+                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
                 )
-                self.hiddens_c = torch.cat((self.hiddens_c, hidden[1]), 0)
+                self.next_hiddens_h = torch.cat(
+                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
+                )
+                self.hiddens_c = torch.cat(
+                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
+                )
                 self.next_hiddens_c = torch.cat(
-                    (self.next_hiddens_c, next_hidden[1]), 0
+                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
                 )
 
     def reset(self):
