@@ -331,6 +331,11 @@ class ActorCritic(nn.Module):
         )
         estimated_return = self.actorcritic.critic(latent_states)
         advantages = empirical_return - estimated_return
+        if self.config["NORMALIZE_ADVANTAGES"]:
+            advantages = torch.div(
+                torch.sub(advantages, advantages.mean()),
+                torch.add((advantages.std(), 1e-8)),
+            )
         if self.old_dist is not None:
             with torch.no_grad():
                 KL_divergence = compute_KL_divergence(self.old_dist, dist)
@@ -349,19 +354,17 @@ class ActorCritic(nn.Module):
             + self.config["ENTROPY_FACTOR"] * entropy_loss
             + self.config["KL_FACTOR"] * kl_loss
         )
-        if self.index > self.config["LEARNING_START"]:
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            # self.gradient_clipping()
-            self.optimizer.step()
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.gradient_clipping()
+        self.optimizer.step()
 
         # KPIs
-        # explained_variance = self.compute_explained_variance(
-        #     empirical_return.detach().numpy().flatten(),
-        #     advantage.detach().numpy().flatten(),
-        # )
-        explaied_variance = 0
+        explained_variance = self.compute_explained_variance(
+            empirical_return.detach().numpy(),
+            advantages.detach().numpy(),
+        )
         self.old_dist = dist
 
         # Logging
@@ -376,9 +379,9 @@ class ActorCritic(nn.Module):
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
                 self.writer.add_scalar("Train/total loss", loss, self.index)
-                # self.writer.add_scalar(
-                #     "Train/explained variance", explained_variance, self.index
-                # )
+                self.writer.add_scalar(
+                    "Train/explained variance", explained_variance, self.index
+                )
                 self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
@@ -389,7 +392,7 @@ class ActorCritic(nn.Module):
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
                     "Train/total loss": loss,
-                    # "Train/explained variance": explained_variance,
+                    "Train/explained variance": explained_variance,
                     "Train/KL divergence": KL_divergence,
                     "Train/learning rate": self.lr_scheduler.transform(self.index),
                 },
@@ -485,8 +488,9 @@ class ActorCritic(nn.Module):
         )  # gradient clipping
 
     def compute_explained_variance(self, target, advantage):
-        self.target_var_scaler.partial_fit(target)
-        self.advantages_var_scaler.partial_fit(advantage)
+        for x, y in zip(target, advantage):
+            self.target_var_scaler.partial_fit(x)
+            self.advantages_var_scaler.partial_fit(y)
 
         var_targets = self.target_var_scaler.std
         var_advantages = self.advantages_var_scaler.std

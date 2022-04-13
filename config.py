@@ -16,7 +16,7 @@ config = {
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 1e5,
+    "NB_TIMESTEPS_TRAIN": 2e5,
     "NB_EPISODES_TEST": 10,
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0.0,
@@ -57,4 +57,5 @@ config = {
     "LAW": "normal",
     "ADD_ACTION": False,
     "BUFFER_SIZE": 5,
+    "NORMALIZE_ADVANTAGES": True,
 }

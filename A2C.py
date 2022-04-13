@@ -3,7 +3,7 @@ import pickle
 import gym
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from normalize import SimpleMinMaxScaler, SimpleStandardizer
+from normalize import SimpleMinMaxScaler, SimpleStandardizer, RunningMeanStd
 import wandb
 
 # Base class for Agent
@@ -41,6 +41,7 @@ class A2C(Agent):
         )
 
         self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers()
+        self.obs_scaler = RunningMeanStd(shape=env.observation_space.shape)
 
         # Initialize the policy network with the right shape
         self.network = ActorCritic(
@@ -103,14 +104,23 @@ class A2C(Agent):
             hidden = self.network.get_initial_states()
 
             while not done:
-                action, next_hidden = self.select_action(obs, hidden)
-                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
+                if self.t > self.config["LEARNING_START"]:
+                    action, next_hidden = self.select_action(obs, hidden)
+                    action = action.detach().data.numpy()
+                else:
+                    action, next_hidden = self.env.action_space.sample(), hidden
+                next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
-                obs, reward = self.scaling(obs, reward)
-                self.rollout.add(
-                    obs, next_obs, action, reward, done, hidden, next_hidden
-                )
-                if (t_episode > 1) and (t_episode % self.config["BUFFER_SIZE"] == 0):
+                next_obs, reward = self.scaling(next_obs, reward)
+                if self.t > self.config["LEARNING_START"]:
+                    self.rollout.add(
+                        obs, next_obs, action, reward, done, hidden, next_hidden
+                    )
+                if (
+                    (t_episode > 1)
+                    and (t_episode % self.config["BUFFER_SIZE"] == 0)
+                    and (self.t > self.config["LEARNING_START"])
+                ):
                     self.network.update_policy(self.rollout)
                     self.rollout.reset()
                 self.t, t_episode = self.t + 1, t_episode + 1
@@ -291,18 +301,18 @@ class A2C(Agent):
             # Save the artifact version to W&B and mark it as the output of this run
             self.run.log_artifact(artifact)
 
-    def scaling(self, reward, next_obs):
+    def scaling(self, obs, reward):
         # Scaling
         if self.config["SCALING"]:
             if self.t >= self.config["LEARNING_START"]:
-                # self.obs_scaler.partial_fit(next_obs)
-                # self.reward_scaler.partial_fit(np.array([reward]))
-                reward = self.reward_scaler.transform(np.array([reward]))[0]
-                next_obs = self.obs_scaler.transform(next_obs)
-            else:
-                self.obs_scaler.partial_fit(next_obs)
+                self.obs_scaler.partial_fit(obs)
                 self.reward_scaler.partial_fit(np.array([reward]))
-        return reward, next_obs
+                reward = self.reward_scaler.transform(np.array([reward]))[0]
+                obs = self.obs_scaler.transform(obs)
+            else:
+                self.obs_scaler.partial_fit(obs)
+                self.reward_scaler.partial_fit(np.array([reward]))
+        return obs, reward
 
     def create_dirs(self):
         today = date.today().strftime("%d-%m-%Y")
@@ -327,11 +337,11 @@ class A2C(Agent):
             target_scaler = None
         return obs_scaler, reward_scaler, target_scaler
 
-    def scaling(self, obs, reward):
-        if self.config["SCALING"]:
-            self.obs_scaler.partial_fit(obs)
-            self.reward_scaler.partial_fit(reward)
-            if self.config["LEARNING_START"]:
-                obs = self.obs_scaler.transform(obs)
-                reward = self.reward_scaler.transform(reward)
-        return obs, reward
+    # def scaling(self, obs, reward):
+    #     if self.config["SCALING"]:
+    #         self.obs_scaler.partial_fit(obs)
+    #         self.reward_scaler.partial_fit(reward)
+    #         if self.config["LEARNING_START"]:
+    #             obs = self.obs_scaler.transform(obs)
+    #             reward = self.reward_scaler.transform(reward)
+    #     return obs, reward
