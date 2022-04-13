@@ -21,13 +21,13 @@ config = {
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0.0,
     "KL_FACTOR": 0.0000,
-    "LEARNING_START": 1e3,
+    "LEARNING_START": 1e1,
     # Specific
     "N_STEPS": 1,
     # NETWORKS
     "RECURRENT": False,
     "GRADIENT_CLIPPING": 0.5,
-    "LEARNING_RATE": 2e-4,
+    "LEARNING_RATE": 1e-3,
     "LEARNING_RATE_END": 1e-5,
     # RNN
     "HIDDEN_SIZE": 64,
@@ -35,10 +35,10 @@ config = {
     "COMMON_NN_ARCHITECTURE": "[64]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
-    "ACTOR_NN_ARCHITECTURE": "[64]",
+    "ACTOR_NN_ARCHITECTURE": "[32]",
     "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
-    "CRITIC_NN_ARCHITECTURE": "[64]",
+    "CRITIC_NN_ARCHITECTURE": "[32]",
     "CRITIC_ACTIVATION_FUNCTION": "relu",
     # PATHS
     "TENSORBOARD_PATH": "logs",

@@ -10,7 +10,8 @@ from buffer import RolloutBuffer
 
 # Network creator tool
 from network_utils import get_network_from_architecture, t, compute_KL_divergence
-from utils import SimpleStandardizer, get_device, LinearSchedule
+from utils import get_device, LinearSchedule
+from normalize import SimpleStandardizer
 
 # Numpy
 import numpy as np
@@ -153,13 +154,12 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             Tuple[Torch.Tensor, Torch.Tensor]: The processed state and the new hidden state of the LSTM
         """
-
         x = self.common_layers(state)
-        if self.recurrent:
-            # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
-            # x = torch.relu(x)
-            x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
-            x, hidden = self.recurrent_layer(x, hidden)
+        # if self.recurrent:
+        #     # If recurrent, we need to add an activaction function there, otherwise it's done in the actor or critic networks
+        #     # x = torch.relu(x)
+        #     x = x.view(-1, 1, eval(self.config["COMMON_NN_ARCHITECTURE"])[-1])
+        #     x, hidden = self.recurrent_layer(x, hidden)
         return x, hidden
 
     def actor(
@@ -194,7 +194,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
             dist = torch.distributions.Categorical(probs=x)
             return dist, hidden
 
-    def critic(self, state: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
+    def critic(self, state: torch.Tensor) -> torch.Tensor:
         """
         Returns the value estimation for the given state and the current critic parameters
 
@@ -208,7 +208,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         # with torch.no_grad():
         # embedded_obs, _ = self.forward(state, hidden)
         value = self.critic_layers(state)
-        return value.reshape(-1, 1)
+        return value
 
 
 class ActorCritic(nn.Module):
@@ -237,8 +237,12 @@ class ActorCritic(nn.Module):
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
         self.optimizer = optim.Adam(
             self.actorcritic.parameters(),
-            lr=config["LEARNING_RATE"],
+            lr=self.config["LEARNING_RATE"],
         )
+        # self.critic_optimizer = optim.Adam(
+        #     self.actorcritic.critic_layers.parameters(),
+        #     lr=self.config["LEARNING_RATE"],
+        # )
 
         self.target_var_scaler = SimpleStandardizer()
         self.advantages_var_scaler = SimpleStandardizer()
@@ -269,19 +273,12 @@ class ActorCritic(nn.Module):
             np.array : The selected action(s)
         """
 
-        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)[
-            :, None, :
-        ]
+        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)
         embedded_observation, new_hidden = self.actorcritic.forward(observation, hidden)
         dist, _ = self.actorcritic.actor(embedded_observation, hidden)
         action = dist.sample()
         if self.continuous:
             if self.config["LAW"] == "normal":
-                # action = (
-                #     action
-                #     * (self.env.action_space.high - self.env.action_space.low)
-                #     + self.env.action_space.low
-                # )
                 action = np.clip(
                     action, self.env.action_space.low, self.env.action_space.high
                 )
@@ -292,13 +289,11 @@ class ActorCritic(nn.Module):
                 )
             return action.detach().data.numpy()[0][0], hidden
         else:
-            action = action.reshape(-1, 1)
-            return action.item(), new_hidden
+            assert len(action) == 1, "Bug action"
+            action = action.flatten()[0]
+            return action, new_hidden
 
-    def update_policy(
-        self,
-        rollout: RolloutBuffer,
-    ) -> None:
+    def update_policy(self, rollout) -> None:
         """
         Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
 
@@ -313,58 +308,41 @@ class ActorCritic(nn.Module):
 
         # For logging purposes
         self.index += 1
+        latent_states, _ = self.actorcritic.forward(t(rollout.states), None)
+        latent_next_states, _ = self.actorcritic.forward(t(rollout.next_states), None)
 
-        self.optimizer = optim.Adam(
-            self.actorcritic.parameters(),
-            lr=self.lr_scheduler.transform(self.index),
-        )
-        if self.config["RECURRENT"]:
-            embedded_obs, hidden = self.actorcritic.forward(
-                t(rollout.states), t(rollout.hiddens)
-            )
-            embedded_next_obs, next_hidden = self.actorcritic.forward(
-                t(rollout.next_states), t(rollout.next_hiddens)
-            )
-        else:
-            embedded_obs, hidden = self.actorcritic.forward(t(rollout.states), None)
-            embedded_next_obs, next_hidden = self.actorcritic.forward(
-                t(rollout.next_states), None
-            )
         dist, _ = self.actorcritic.actor(
-            embedded_obs,
-            hidden,
+            latent_states,
+            None,
         )
+        actions = t(np.array(rollout.actions).reshape(1, -1))
+        rewards = t(np.array(rollout.rewards).reshape(-1, 1))
+        dones = t(np.array(rollout.dones).reshape(-1, 1))
 
-        log_probs = dist.log_prob(t(rollout.actions))
+        log_probs = dist.log_prob(actions).reshape(-1, 1)
 
-        empirical_return = t(rollout.returns) + (1 - t(rollout.dones)) * self.config[
-            "GAMMA"
-        ] ** self.config["N_STEPS"] * self.actorcritic.critic(
-            embedded_next_obs, next_hidden
+        estimated_next_return = self.actorcritic.critic(latent_next_states)
+
+        empirical_return = (
+            rewards
+            + (1 - dones)
+            * self.config["GAMMA"] ** self.config["N_STEPS"]
+            * estimated_next_return
         )
-        estimated_return = self.actorcritic.critic(embedded_obs, hidden)
-
-        # Target scaling
-        if self.scaler is not None:
-            self.scaler.partial_fit(empirical_return.detach().numpy().flatten())
-        if (
-            (self.scaler is not None)
-            and (self.config["TARGET_SCALING"])
-            and (self.index > 2)
-            and self.index <= self.config["LEARNING_START"]
-        ):
-            empirical_return = self.scaler.pytorch_transform(empirical_return)
-
+        estimated_return = self.actorcritic.critic(latent_states)
         advantages = empirical_return - estimated_return
-        # with torch.no_grad():
-        #     KL_divergence = np.exp(compute_KL_divergence(self.old_dist, dist)) - 1
+        if self.old_dist is not None:
+            with torch.no_grad():
+                KL_divergence = compute_KL_divergence(self.old_dist, dist)
+        else:
+            KL_divergence = 0
 
         # Losses (be careful that all its components are torch tensors with grad on)
-        critic_loss = advantages.pow(2).mean()
-        actor_loss = (-log_probs * advantages).mean()
         entropy_loss = -dist.entropy().mean()
-        kl_loss = 0  # -KL_divergence
-
+        critic_loss = advantages.pow(2).mean()
+        actor_loss = -(log_probs * advantages.detach()).mean()
+        kl_loss = -KL_divergence
+        loss = 0
         loss = (
             actor_loss
             + self.config["VALUE_FACTOR"] * critic_loss
@@ -372,9 +350,10 @@ class ActorCritic(nn.Module):
             + self.config["KL_FACTOR"] * kl_loss
         )
         if self.index > self.config["LEARNING_START"]:
+
             self.optimizer.zero_grad()
-            loss.backward(retain_graph=False)
-            self.gradient_clipping()
+            loss.backward()
+            # self.gradient_clipping()
             self.optimizer.step()
 
         # KPIs
@@ -400,7 +379,7 @@ class ActorCritic(nn.Module):
                 # self.writer.add_scalar(
                 #     "Train/explained variance", explained_variance, self.index
                 # )
-                # self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
+                self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
         else:
             warnings.warn("No Tensorboard writer available")
         if self.config["logging"] == "wandb":
@@ -411,7 +390,7 @@ class ActorCritic(nn.Module):
                     "Train/critic loss": critic_loss,
                     "Train/total loss": loss,
                     # "Train/explained variance": explained_variance,
-                    # "Train/KL divergence": KL_divergence,
+                    "Train/KL divergence": KL_divergence,
                     "Train/learning rate": self.lr_scheduler.transform(self.index),
                 },
                 commit=False,

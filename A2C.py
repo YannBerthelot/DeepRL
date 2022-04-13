@@ -1,10 +1,9 @@
-# For type hinting only
 import os
 import pickle
 import gym
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from utils import SimpleMinMaxScaler, SimpleStandardizer
+from normalize import SimpleMinMaxScaler, SimpleStandardizer
 import wandb
 
 # Base class for Agent
@@ -98,80 +97,28 @@ class A2C(Agent):
         while self.t <= nb_timestep:
             # tqdm stuff
             pbar.update(self.t - t_old)
-            t_old, t_episode = self.t, 0
+            t_old, t_episode = self.t, 1
 
-            old_done, done, obs, rewards = False, False, env.reset(), []
+            done, obs, rewards = False, env.reset(), []
             hidden = self.network.get_initial_states()
-
-            if self.config["SCALING"]:
-                self.obs_scaler.partial_fit(obs)
 
             while not done:
                 action, next_hidden = self.select_action(obs, hidden)
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
                 rewards.append(reward)
-                reward, next_obs = self.scaling(reward, next_obs)
-
-                # Add the experience collected to the memory for the n-step processing
-                if self.t >= self.config["LEARNING_START"]:
-                    self.memory.add(obs, action, reward, done, hidden)
-
-                    # When we have collected n steps we can start learning
-                    if t_episode >= self.config["N_STEPS"]:
-                        # Compute the n-steps return to be used as target and fetch the relevant information from the memory
-                        (
-                            n_step_return,
-                            old_obs,
-                            old_action,
-                            old_done,
-                            old_hidden,
-                        ) = self.memory.compute_return()
-                        self.rollout.add(
-                            old_obs,
-                            obs,
-                            old_action,
-                            n_step_return,
-                            old_done,
-                            hidden,
-                            old_hidden,
-                        )
-                        if (
-                            (not old_done)
-                            and (t_episode % self.config["BUFFER_SIZE"] == 0)
-                            and (
-                                t_episode
-                                >= self.config["N_STEPS"] + self.config["BUFFER_SIZE"]
-                            )
-                        ):
-                            self.network.update_policy(self.rollout)
-
-                        self.memory.remove_first_step()
-
-                self.rollout.reset()
+                obs, reward = self.scaling(obs, reward)
+                self.rollout.add(
+                    obs, next_obs, action, reward, done, hidden, next_hidden
+                )
+                if (t_episode > 1) and (t_episode % self.config["BUFFER_SIZE"] == 0):
+                    self.network.update_policy(self.rollout)
+                    self.rollout.reset()
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs, hidden = next_obs, next_hidden
-            while not old_done:
-                (
-                    n_step_return,
-                    old_obs,
-                    old_action,
-                    old_done,
-                    old_hidden,
-                ) = self.memory.compute_return()
-                self.rollout.add(
-                    old_obs,
-                    obs,
-                    old_action,
-                    n_step_return,
-                    old_done,
-                    hidden,
-                    old_hidden,
-                )
-            self.memory.clear()
             reward_sum = np.sum(rewards)
-
+            self.rollout.reset()
             # Track best model and save it
-            self.save_if_best(reward_sum)
+            artifact = self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
                 break
 
@@ -179,7 +126,7 @@ class A2C(Agent):
             self.episode_logging(rewards, reward_sum)
 
         pbar.close()
-        self.train_logging()
+        self.train_logging(artifact)
 
     def test(
         self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None
@@ -217,7 +164,7 @@ class A2C(Agent):
                 action, next_hidden = self.select_action(obs, hidden)
 
                 # Step the environment accordingly
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
 
                 # Log reward for performance tracking
                 rewards_sum += reward
@@ -274,6 +221,7 @@ class A2C(Agent):
         self.network.load(name)
 
     def save_if_best(self, reward_sum):
+        artifact = None
         if reward_sum >= self.best_episode_reward:
             self.best_episode_reward = reward_sum
             if self.config["logging"] == "wandb":
@@ -281,6 +229,7 @@ class A2C(Agent):
                 artifact = wandb.Artifact(f"{self.comment}_best", type="model")
 
             self.save(f"{self.comment}_best")
+        return artifact
 
     def early_stopping(self, reward_sum):
         if reward_sum == self.old_reward_sum:
@@ -322,7 +271,7 @@ class A2C(Agent):
                 self.episode,
             )
 
-    def train_logging(self):
+    def train_logging(self, artifact):
         if self.config["logging"] == "wandb":
             # Add a file to the artifact's contents
             artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
@@ -377,3 +326,12 @@ class A2C(Agent):
             reward_scaler = None
             target_scaler = None
         return obs_scaler, reward_scaler, target_scaler
+
+    def scaling(self, obs, reward):
+        if self.config["SCALING"]:
+            self.obs_scaler.partial_fit(obs)
+            self.reward_scaler.partial_fit(reward)
+            if self.config["LEARNING_START"]:
+                obs = self.obs_scaler.transform(obs)
+                reward = self.reward_scaler.transform(reward)
+        return obs, reward
