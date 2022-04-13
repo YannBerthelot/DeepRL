@@ -16,22 +16,22 @@ config = {
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 2e5,
+    "NB_TIMESTEPS_TRAIN": 1e5,
     "NB_EPISODES_TEST": 10,
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0.0,
     "KL_FACTOR": 0.0000,
-    "LEARNING_START": 1e0,
+    "LEARNING_START": 0,
     # Specific
     "N_STEPS": 1,
     # NETWORKS
-    "RECURRENT": True,
-    "GRADIENT_CLIPPING": 5e2,
+    "RECURRENT": False,
+    "GRADIENT_CLIPPING": None,
     "LEARNING_RATE": 1e-3,
     "LEARNING_RATE_END": 1e-5,
     # RNN
     "HIDDEN_SIZE": 64,
-    "HIDDEN_LAYERS": 2,
+    "HIDDEN_LAYERS": 1,
     "COMMON_NN_ARCHITECTURE": "[64]",
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
@@ -49,9 +49,8 @@ config = {
     # Logging
     "logging": "tensorboard",
     # Normalization
-    "SCALING": True,
+    "SCALING": False,
     "SCALING_METHOD": "standardize",
-    "TARGET_SCALING": False,
     # Continuous
     "CONTINUOUS": False,
     "LAW": "normal",

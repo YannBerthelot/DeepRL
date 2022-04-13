@@ -432,7 +432,7 @@ class ActorCritic(nn.Module):
         if self.config["NORMALIZE_ADVANTAGES"]:
             advantages = torch.div(
                 torch.sub(advantages, advantages.mean()),
-                torch.add((advantages.std(), 1e-8)),
+                torch.add(advantages.std(), 1e-8),
             )
         if self.old_dist is not None:
             with torch.no_grad():
@@ -455,7 +455,8 @@ class ActorCritic(nn.Module):
 
         self.optimizer.zero_grad()
         loss.backward(retain_graph=False)
-        self.gradient_clipping()
+        if self.config["GRADIENT_CLIPPING"] is not None:
+            self.gradient_clipping()
         self.optimizer.step()
 
         # KPIs

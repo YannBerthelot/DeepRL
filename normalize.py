@@ -97,7 +97,13 @@ class RunningMeanStd:
 
     def transform(self, obs):
         self.partial_fit(obs)
+
         return (obs - self.mean) / np.sqrt(self.var + self.epsilon)
+
+    def show(self):
+        print(
+            f"Mean: {self.mean}, Standard-deviation: {np.sqrt(self.var + self.epsilon)}"
+        )
 
 
 def update_mean_var_count_from_moments(

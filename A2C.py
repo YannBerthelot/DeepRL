@@ -41,7 +41,7 @@ class A2C(Agent):
         )
 
         self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers()
-        self.obs_scaler = RunningMeanStd(shape=env.observation_space.shape)
+        # self.obs_scaler = RunningMeanStd(shape=env.observation_space.shape)
 
         # Initialize the policy network with the right shape
         self.network = ActorCritic(
@@ -92,9 +92,28 @@ class A2C(Agent):
         # Init training
         self.episode, self.t, t_old, self.constant_reward_counter = 1, 1, 0, 0
 
-        # Iterate over epochs
+        # Pre-Training
+        if self.config["LEARNING_START"] > 0:
+            print("--- Pre-Training ---")
+            t_pre_train = 1
+            pbar = tqdm(total=self.config["LEARNING_START"], initial=1)
+            while t_pre_train <= self.config["LEARNING_START"]:
+                pbar.update(t_pre_train - t_old)
+                t_old = t_pre_train
+                done, obs, rewards = False, env.reset(), []
+                while not done:
+                    action = self.env.action_space.sample()
+                    next_obs, reward, done, _ = env.step(action)
+                    next_obs, reward = self.scaling(next_obs, reward)
+                    t_pre_train += 1
+            pbar.close()
+            print(
+                f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
+            )
+            print(f"Reward scaler - std : {self.reward_scaler.std}")
+        print("--- Training ---")
+        t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
-
         while self.t <= nb_timestep:
             # tqdm stuff
             pbar.update(self.t - t_old)
@@ -103,23 +122,18 @@ class A2C(Agent):
             done, obs, rewards = False, env.reset(), []
             hidden = self.network.get_initial_states()
             while not done:
-                if self.t > self.config["LEARNING_START"]:
-                    action, next_hidden = self.select_action(obs, hidden)
-
-                    action = action.detach().data.numpy()
-                else:
-                    action, next_hidden = self.env.action_space.sample(), hidden
+                action, next_hidden = self.select_action(obs, hidden)
+                action = action.detach().data.numpy()
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
                 next_obs, reward = self.scaling(next_obs, reward)
-                if self.t >= self.config["LEARNING_START"]:
-                    self.rollout.add(
-                        obs, next_obs, action, reward, done, hidden, next_hidden
-                    )
+                self.rollout.add(
+                    obs, next_obs, action, reward, done, hidden, next_hidden
+                )
                 if (
                     (t_episode > 1)
                     and (t_episode % self.config["BUFFER_SIZE"] == 0)
-                    and (self.t > self.config["LEARNING_START"])
+                    and (self.t >= self.config["BUFFER_SIZE"])
                 ):
                     self.network.update_policy(self.rollout)
                     self.rollout.reset()
