@@ -42,7 +42,7 @@ if __name__ == "__main__":
                 env,
                 nb_episodes=config["NB_EPISODES_TEST"],
                 render=True,
-                scaler_file=f"data/{comment}_obs_scaler.pkl",
+                # scaler_file=f"data/{comment}_obs_scaler.pkl",
             )
 
             if config["logging"] == "wandb":
