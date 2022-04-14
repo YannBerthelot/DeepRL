@@ -6,7 +6,7 @@ from pymgrid_utils import get_environments
 
 config["name"] = "pymgrid"
 config_global = {**config, **pymgrid_config}
-for n_step in [1, 5, 24, 48, 24 * 7]:
+for n_step in [24, 48, 24 * 7]:
     config_global["BUFFER_SIZE"] = n_step
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if config["logging"] == "wandb":

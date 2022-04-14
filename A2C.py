@@ -105,7 +105,9 @@ class A2C(Agent):
                 while not done:
                     action = self.env.action_space.sample()
                     next_obs, reward, done, _ = env.step(action)
-                    next_obs, reward = self.scaling(next_obs, reward)
+                    next_obs, reward = self.scaling(
+                        next_obs, reward, fit=True, transform=False
+                    )
                     t_pre_train += 1
             pbar.close()
             print(
@@ -127,7 +129,9 @@ class A2C(Agent):
                 action, next_hidden = self.select_action(obs, hidden)
                 next_obs, reward, done, _ = env.step(action.detach().data.numpy())
                 rewards.append(reward)
-                next_obs, reward = self.scaling(next_obs, reward)
+                next_obs, reward = self.scaling(
+                    next_obs, reward, fit=False, transform=True
+                )
                 self.rollout.add(
                     obs, next_obs, action, reward, done, hidden, next_hidden
                 )
@@ -316,17 +320,15 @@ class A2C(Agent):
             # Save the artifact version to W&B and mark it as the output of this run
             self.run.log_artifact(artifact)
 
-    def scaling(self, obs, reward):
+    def scaling(self, obs, reward, fit=True, transform=True):
         # Scaling
         if self.config["SCALING"]:
-            if self.t >= self.config["LEARNING_START"]:
+            if fit:
                 self.obs_scaler.partial_fit(obs)
                 self.reward_scaler.partial_fit(np.array([reward]))
+            if transform:
                 reward = self.reward_scaler.transform(np.array([reward]))[0]
                 obs = self.obs_scaler.transform(obs)
-            else:
-                self.obs_scaler.partial_fit(obs)
-                self.reward_scaler.partial_fit(np.array([reward]))
         return obs, reward
 
     def create_dirs(self):
