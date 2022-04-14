@@ -42,6 +42,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ### Priority
 
+- [ ] Correct agent testing
 - [ ] Rework continuous actions to handle batch
 
 ### Optionnal

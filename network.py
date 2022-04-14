@@ -345,6 +345,11 @@ class ActorCritic(nn.Module):
 
         # For logging purposes
         self.index += 1
+        self.optimizer = optim.Adam(
+            self.actorcritic.parameters(),
+            lr=self.lr_scheduler.transform(self.index),
+        )
+
         pre_latent_states = self.actorcritic.forward(t(rollout.states))
         pre_latent_next_states = self.actorcritic.forward(t(rollout.next_states))
         if self.config["RECURRENT"]:

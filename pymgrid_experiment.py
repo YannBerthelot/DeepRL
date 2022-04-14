@@ -6,12 +6,12 @@ from pymgrid_utils import get_environments
 
 config["name"] = "pymgrid"
 config_global = {**config, **pymgrid_config}
-for n_step in [1, 24, 48, 24 * 7]:
-    config_global["N_STEPS"] = n_step
+for n_step in [1, 5, 24, 48, 24 * 7]:
+    config_global["BUFFER_SIZE"] = n_step
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if config["logging"] == "wandb":
             run = wandb.init(
-                project="Pymgrid tryhard",
+                project="Pymgrid batch",
                 entity="yann-berthelot",
                 name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                 reinit=True,
@@ -36,14 +36,14 @@ for n_step in [1, 24, 48, 24 * 7]:
 
         # Load best agent from training
         agent.env = mg_env_eval
-        agent.load(f"config_pymgrid_{experiment}_best")
+        agent.load(f"baseline_pymgrid_{experiment}_best")
 
         # Evaluate and render the policy
         agent.test(
             mg_env_eval,
             nb_episodes=config["NB_EPISODES_TEST"],
             render=False,
-            scaler_file=f"data/baseline_pymgrid_{experiment}_obs_scaler.pkl",
+            # scaler_file=f"data/baseline_pymgrid_{experiment}_obs_scaler.pkl",
         )
         if config["logging"] == "wandb":
             run.finish()

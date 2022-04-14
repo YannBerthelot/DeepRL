@@ -12,23 +12,24 @@ config = {
     "GPU": GPU_NAME,
     # GLOBAL INFO
     "ENVIRONMENT": "CartPole-v1",
+    "RENDER": False,
     # AGENT INFO
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 1e5,
+    "NB_TIMESTEPS_TRAIN": 5e5,
     "NB_EPISODES_TEST": 10,
     "VALUE_FACTOR": 0.5,
-    "ENTROPY_FACTOR": 0.0,
+    "ENTROPY_FACTOR": 1e-3,
     "KL_FACTOR": 0.0000,
-    "LEARNING_START": 0,
+    "LEARNING_START": 1e5,
     # Specific
     "N_STEPS": 1,
     # NETWORKS
     "RECURRENT": False,
     "GRADIENT_CLIPPING": None,
-    "LEARNING_RATE": 1e-3,
-    "LEARNING_RATE_END": 1e-5,
+    "LEARNING_RATE": 1e-5,
+    "LEARNING_RATE_END": 1e-6,
     # RNN
     "HIDDEN_SIZE": 64,
     "HIDDEN_LAYERS": 1,
@@ -47,13 +48,13 @@ config = {
     "N_EXPERIMENTS": 3,
     "EARLY_STOPPING_STEPS": 10000,
     # Logging
-    "logging": "tensorboard",
+    "logging": "wandb",
     # Normalization
-    "SCALING": False,
+    "SCALING": True,
     "SCALING_METHOD": "standardize",
     # Continuous
     "CONTINUOUS": False,
     "LAW": "normal",
     "BUFFER_SIZE": 5,
-    "NORMALIZE_ADVANTAGES": False,
+    "NORMALIZE_ADVANTAGES": True,
 }

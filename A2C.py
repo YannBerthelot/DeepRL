@@ -1,5 +1,6 @@
 import os
 import pickle
+from pkgutil import extend_path
 import gym
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -113,6 +114,7 @@ class A2C(Agent):
             print(f"Reward scaler - std : {self.reward_scaler.std}")
         print("--- Training ---")
         t_old = 0
+        del pbar
         pbar = tqdm(total=nb_timestep, initial=1)
         while self.t <= nb_timestep:
             # tqdm stuff
@@ -123,8 +125,7 @@ class A2C(Agent):
             hidden = self.network.get_initial_states()
             while not done:
                 action, next_hidden = self.select_action(obs, hidden)
-                action = action.detach().data.numpy()
-                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
                 rewards.append(reward)
                 next_obs, reward = self.scaling(next_obs, reward)
                 self.rollout.add(
@@ -163,6 +164,7 @@ class A2C(Agent):
             nb_episodes (int): Number of test episodes
             render (bool, optional): Wether or not to render the visuals of the episodes while testing. Defaults to False.
         """
+        print("--- Testing ---")
         if scaler_file is not None:
             with open(scaler_file, "rb") as input_file:
                 scaler = pickle.load(input_file)
@@ -171,10 +173,7 @@ class A2C(Agent):
         best_test_episode_reward = 0
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
-            if self.config["RECURRENT"]:
-                hidden = self.network.get_initial_states()
-            else:
-                hidden = None
+            hidden = self.network.get_initial_states()
             # Init episode
             done = False
             obs = env.reset()
@@ -296,7 +295,9 @@ class A2C(Agent):
             )
 
     def train_logging(self, artifact):
+        os.makedirs("data", exist_ok=True)
         if self.config["logging"] == "wandb":
+            artifact = wandb.Artifact(f"{self.comment}_model", type="model")
             # Add a file to the artifact's contents
             artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
 

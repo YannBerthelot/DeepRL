@@ -41,7 +41,7 @@ if __name__ == "__main__":
             agent.test(
                 env,
                 nb_episodes=config["NB_EPISODES_TEST"],
-                render=True,
+                render=config["RENDER"],
                 # scaler_file=f"data/{comment}_obs_scaler.pkl",
             )
 
