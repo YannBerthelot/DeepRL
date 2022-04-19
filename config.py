@@ -11,7 +11,7 @@ config = {
     "CPU": platform.processor(),
     "GPU": GPU_NAME,
     # GLOBAL INFO
-    "ENVIRONMENT": "Pymgrid",
+    "ENVIRONMENT": "CartPole-v1",
     "RENDER": False,
     # AGENT INFO
     # General
@@ -20,15 +20,15 @@ config = {
     "NB_TIMESTEPS_TRAIN": 5e5,
     "NB_EPISODES_TEST": 10,
     "VALUE_FACTOR": 0.5,
-    "ENTROPY_FACTOR": 1e-5,
+    "ENTROPY_FACTOR": 0,
     "KL_FACTOR": 0.0000,
     "LEARNING_START": 1e5,
     # Specific
-    "N_STEPS": 1,
+    "N_STEPS": 5,
     # NETWORKS
-    "RECURRENT": False,
-    "GRADIENT_CLIPPING": 0.5,
-    "LEARNING_RATE": 1e-5,
+    "RECURRENT": True,
+    "GRADIENT_CLIPPING": None,
+    "LEARNING_RATE": 5e-4,
     "LEARNING_RATE_END": 1e-6,
     # RNN
     "HIDDEN_SIZE": 64,
@@ -55,6 +55,6 @@ config = {
     # Continuous
     "CONTINUOUS": False,
     "LAW": "normal",
-    "BUFFER_SIZE": 5,
+    "BUFFER_SIZE": 1,
     "NORMALIZE_ADVANTAGES": False,
 }

@@ -35,7 +35,11 @@ class A2C(Agent):
         self.comment = comment
 
         self.memory = Memory(n_steps=config["N_STEPS"], config=config)
-        self.rollout = RolloutBuffer(buffer_size=config["N_STEPS"])
+        self.rollout = RolloutBuffer(
+            buffer_size=config["BUFFER_SIZE"],
+            gamma=self.config["GAMMA"],
+            n_steps=self.config["N_STEPS"],
+        )
         self.obs_shape = env.observation_space.shape
         self.action_shape = (
             env.action_space.shape[0] if config["CONTINUOUS"] else env.action_space.n
@@ -74,8 +78,22 @@ class A2C(Agent):
         Returns:
             int: The selected action
         """
-        action, next_hidden = self.network.select_action(observation, hidden)
-        return action, next_hidden
+
+        return self.network.select_action(observation, hidden)
+
+    def compute_value(self, observation: np.array, hidden: np.array) -> int:
+        """
+        Select the action based on the current policy and the observation
+
+        Args:
+            observation (np.array): State representation
+            testing (bool): Wether to be in test mode or not.
+
+        Returns:
+            int: The selected action
+        """
+        value, new_hidden = self.network.get_value(observation, hidden)
+        return value, new_hidden
 
     def train(self, env: gym.Env, nb_timestep: int) -> None:
         """
@@ -116,7 +134,6 @@ class A2C(Agent):
             print(f"Reward scaler - std : {self.reward_scaler.std}")
         print("--- Training ---")
         t_old = 0
-        del pbar
         pbar = tqdm(total=nb_timestep, initial=1)
         while self.t <= nb_timestep:
             # tqdm stuff
@@ -126,26 +143,24 @@ class A2C(Agent):
             done, obs, rewards = False, env.reset(), []
             hidden = self.network.get_initial_states()
             while not done:
-                action, next_hidden = self.select_action(obs, hidden)
-                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
+                action, next_hidden, loss_params = self.select_action(obs, hidden)
+                next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
                 next_obs, reward = self.scaling(
-                    next_obs, reward, fit=False, transform=True
+                    next_obs, reward, fit=True, transform=True
                 )
-                self.rollout.add(
-                    obs, next_obs, action, reward, done, hidden, next_hidden
-                )
-                if (
-                    (t_episode > 1)
-                    and (t_episode % self.config["BUFFER_SIZE"] == 0)
-                    and (self.t >= self.config["BUFFER_SIZE"])
-                ):
-                    self.network.update_policy(self.rollout)
+                self.rollout.add(reward, done, *loss_params)
+                if self.rollout.full or done:
+                    next_val, next_hidden = self.compute_value(next_obs, hidden)
+                    self.rollout.compute_returns_and_advantages(next_val)
+                    self.learn()
                     self.rollout.reset()
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs, hidden = next_obs, next_hidden
-            reward_sum = np.sum(rewards)
+                # if done:
+                #     last_val = self.compute_value(next_obs, next_hidden)
             self.rollout.reset()
+            reward_sum = np.sum(rewards)
             # Track best model and save it
             artifact = self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
@@ -188,10 +203,10 @@ class A2C(Agent):
                 # Select the action using the current policy
                 if self.config["SCALING"]:
                     obs = self.obs_scaler.transform(obs)
-                action, next_hidden = self.select_action(obs, hidden)
+                action, next_hidden, _ = self.select_action(obs, hidden)
 
                 # Step the environment accordingly
-                next_obs, reward, done, _ = env.step(action.detach().data.numpy())
+                next_obs, reward, done, _ = env.step(action)
 
                 # Log reward for performance tracking
                 rewards_sum += reward
@@ -362,3 +377,14 @@ class A2C(Agent):
     #             obs = self.obs_scaler.transform(obs)
     #             reward = self.reward_scaler.transform(reward)
     #     return obs, reward
+
+    def learn(self):
+        for i, steps in enumerate(self.rollout.get_steps_list()):
+            advantage, log_prob, entropy, kl_divergence = steps
+            self.network.update_policy(
+                advantage,
+                log_prob,
+                entropy,
+                kl_divergence,
+                finished=i == self.config["BUFFER_SIZE"] - 1,
+            )
