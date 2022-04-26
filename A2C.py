@@ -64,6 +64,7 @@ class A2C(Agent):
         writer = SummaryWriter(log_dir=LOG_DIR)
         self.network.writer = writer
         self.best_episode_reward = -np.inf
+        self.episode = 1
 
     def select_action(
         self, observation: np.array, hidden: np.array, testing: bool = False
@@ -109,7 +110,7 @@ class A2C(Agent):
         self.constant_reward_counter, self.old_reward_sum = 0, 0
 
         # Init training
-        self.episode, self.t, t_old, self.constant_reward_counter = 1, 1, 0, 0
+        self.t, t_old, self.constant_reward_counter = 1, 0, 0
 
         # Pre-Training
         if self.config["LEARNING_START"] > 0:
@@ -147,10 +148,10 @@ class A2C(Agent):
                 next_obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
                 next_obs, reward = self.scaling(
-                    next_obs, reward, fit=True, transform=True
+                    next_obs, reward, fit=False, transform=True
                 )
                 self.rollout.add(reward, done, *loss_params)
-                if self.rollout.full or done:
+                if self.rollout.full:
                     next_val, next_hidden = self.compute_value(next_obs, hidden)
                     self.rollout.compute_returns_and_advantages(next_val)
                     self.learn()

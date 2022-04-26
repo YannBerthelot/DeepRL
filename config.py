@@ -17,14 +17,14 @@ config = {
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 5e5,
+    "NB_TIMESTEPS_TRAIN": 2e5,
     "NB_EPISODES_TEST": 10,
     "VALUE_FACTOR": 0.5,
     "ENTROPY_FACTOR": 0,
     "KL_FACTOR": 0.0000,
     "LEARNING_START": 1e5,
     # Specific
-    "N_STEPS": 5,
+    "N_STEPS": 1,
     # NETWORKS
     "RECURRENT": True,
     "GRADIENT_CLIPPING": None,

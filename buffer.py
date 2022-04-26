@@ -22,7 +22,6 @@ class RolloutBuffer:
     def compute_returns_and_advantages(self, last_val):
         self.next_values = self.values[self.n_steps :]
         self.next_values.append(last_val)
-        # self.next_values = torch.cat((self.next_values, last_value), dim=0)
         n_step_return = 0
         returns = []
         for j in range(self.buffer_size):
@@ -69,15 +68,24 @@ class RolloutBuffer:
                 i
             ], self.KL_divergences[i]
 
-    def clear(self, val):
-        self.rewards = self.rewards[self.n_steps :]
-        self.dones = self.dones[self.n_steps :]
-        self.KL_divergences = self.KL_divergences[self.n_steps :]
-        self.values = [val]
-        self.log_probs = self.log_probs[self.n_steps :]
-        self.entropies = self.entropies[self.n_steps :]
+    def clear(self):
+        print(self.values)
+        self.rewards = self.rewards[self.buffer_size :]
+        self.dones = self.dones[self.buffer_size :]
+        self.KL_divergences = self.KL_divergences[self.buffer_size :]
+        self.values = self.values[self.buffer_size :]
+        self.log_probs = self.log_probs[self.buffer_size :]
+        self.entropies = self.entropies[self.buffer_size :]
+        print(self.values)
 
     def reset(self):
+        self.rewards = np.array([])
+        self.dones = np.array([])
+        self.KL_divergences = np.array([])
+        self.values = []
+        self.log_probs = []
+        self.entropies = []
+
         self.rewards = np.array([])
         self.dones = np.array([])
         self.KL_divergences = np.array([])

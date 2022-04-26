@@ -2,16 +2,16 @@ import wandb
 from A2C import A2C
 from config import config
 from pymgrid_config import pymgrid_config
-from pymgrid_utils import get_environments
+from pymgrid_utils import get_environments, get_train_env
 
 config["name"] = "pymgrid"
 config_global = {**config, **pymgrid_config}
-for n_step in [5, 24, 48, 24 * 7]:
+for n_step in [1, 5, 24, 48, 24 * 7]:
     config_global["N_STEPS"] = n_step
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if config["logging"] == "wandb":
             run = wandb.init(
-                project="Pymgrid batch",
+                project="Pymgrid multi-year",
                 entity="yann-berthelot",
                 name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                 reinit=True,
@@ -30,8 +30,7 @@ for n_step in [5, 24, 48, 24 * 7]:
             comment=f"baseline_pymgrid_{experiment}",
             run=run,
         )
-
-        # Train the agent
+        agent.run = run
         agent.train(mg_env_train, config["NB_TIMESTEPS_TRAIN"])
 
         # Load best agent from training

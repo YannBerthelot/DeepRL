@@ -11,5 +11,5 @@ mg_env_train, mg_env_eval = get_environments(
 benchmark = Benchmarks(mg_env_eval.mg)
 benchmark.run_rule_based_benchmark()
 benchmark.describe_benchmarks()
-benchmark.run_mpc_benchmark(verbose=True)
-benchmark.describe_benchmarks()
+# benchmark.run_mpc_benchmark(verbose=True)
+# benchmark.describe_benchmarks()

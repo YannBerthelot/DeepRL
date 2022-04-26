@@ -23,6 +23,23 @@ def get_microgrid(id=1, export_price_factor=0.0):
     return mg
 
 
+with open("fakeYears_archId1_15042022.pkl", "rb") as f:
+    fake_data = pickle.load(f)
+
+
+def get_train_env(year=0, export_price_factor=0):
+    starts = list(range(0, 6759, 2000))
+    mg = get_microgrid(id=1, export_price_factor=export_price_factor)
+    mg_train = copy(mg)
+    return CSPLAScenarioEnvironment(
+        starts,
+        2000,
+        {"microgrid": mg_train},
+        fake_data["tsSample"][year][0][:, None],
+        fake_data["tsSample"][year][1][:, None],
+    )
+
+
 def get_environments(pv_factor=1.0, action_design="original", export_price_factor=0):
     mg = get_microgrid(id=1, export_price_factor=export_price_factor)
     mg_train = copy(mg)
@@ -33,18 +50,20 @@ def get_environments(pv_factor=1.0, action_design="original", export_price_facto
         starts,
         2000,
         {"microgrid": mg_train},
+        # customPVTs=fake_data["tsSample"][0][1][:, None],
+        # customLoadTs=fake_data["tsSample"][0][0][:, None],
         action_design=action_design,
-        pv_factor=pv_factor,
     )
 
     mg_env_eval = CSPLAScenarioEnvironment(
         [0],
         8760,
         {"microgrid": mg_test},
+        # customPVTs=fake_data["tsSample"][0][1][:, None],
+        # customLoadTs=fake_data["tsSample"][0][0][:, None],
         action_design=action_design,
-        pv_factor=pv_factor,
     )
-
+    print(fake_data["tsSample"][0][1][:, None])
     return mg_env_train, mg_env_eval
 
 
