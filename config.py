@@ -26,7 +26,7 @@ config = {
     # Specific
     "N_STEPS": 1,
     # NETWORKS
-    "RECURRENT": True,
+    "RECURRENT": False,
     "GRADIENT_CLIPPING": None,
     "LEARNING_RATE": 5e-4,
     "LEARNING_RATE_END": 1e-6,
@@ -58,3 +58,4 @@ config = {
     "BUFFER_SIZE": 1,
     "NORMALIZE_ADVANTAGES": False,
 }
+    

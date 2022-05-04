@@ -1,7 +1,7 @@
 import os
 import pickle
-from pkgutil import extend_path
 import gym
+import torch
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from normalize import SimpleMinMaxScaler, SimpleStandardizer, RunningMeanStd
@@ -65,6 +65,12 @@ class A2C(Agent):
         self.network.writer = writer
         self.best_episode_reward = -np.inf
         self.episode = 1
+
+    def getAction(self, env: gym.Env, hidden: np.array = None) -> int:
+        observation = env.state
+        with torch.no_grad():
+            action = self.network.select_action(observation, hidden)[0]
+        return action
 
     def select_action(
         self, observation: np.array, hidden: np.array, testing: bool = False
