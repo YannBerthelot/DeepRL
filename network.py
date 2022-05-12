@@ -5,8 +5,6 @@ from typing import Tuple
 # PyTorch
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 from utils import get_device
 
 # Network creator tool
@@ -240,9 +238,6 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the action probabilities and the new hidden state
         """
-        # with torch.no_grad():
-        # embedded_obs, hidden = self.forward(state, hidden)
-        # hidden = (hidden[0].detach(), hidden[1].detach())
         x = self._actor_layers(state)
         if self.config["CONTINUOUS"]:
             stds = torch.clamp(self.logstds.exp(), 1e-3, 0.1)
@@ -267,7 +262,5 @@ class ActorCriticRecurrentNetworks(nn.Module):
         Returns:
             torch.Tensor: A tuple containing the state value and the new hidden state
         """
-        # with torch.no_grad():
-        # embedded_obs, _ = self.forward(state, hidden)
         value = self._critic_layers(state)
         return value.view(1)

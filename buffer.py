@@ -163,19 +163,6 @@ class Memory:
     def get_step(self, i):
         return {key: values[i] for key, values in self.steps.items()}
 
-    # def _zip(self):
-    #     return zip(
-    #         self.states[: self.n_steps],
-    #         self.actions[: self.n_steps],
-    #         self.rewards[: self.n_steps],
-    #         self.dones[: self.n_steps],
-    #         self.n_step_returns,
-    #     )
-
-    # def reversed(self):
-    #     for data in list(self._zip())[::-1]:
-    #         yield data
-
     def __len__(self):
         return len(self.steps["rewards"])
 
