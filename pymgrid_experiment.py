@@ -6,12 +6,12 @@ from pymgrid_utils import get_environments, get_train_env
 
 config["name"] = "pymgrid"
 config_global = {**config, **pymgrid_config}
-for n_step in [1, 5, 24, 48, 24 * 7]:
+for n_step in [1]:
     config_global["N_STEPS"] = n_step
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if config["logging"] == "wandb":
             run = wandb.init(
-                project="Pymgrid multi-year 2",
+                project="Pymgrid test RBC",
                 entity="yann-berthelot",
                 name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                 reinit=True,
@@ -26,7 +26,7 @@ for n_step in [1, 5, 24, 48, 24 * 7]:
         )
         agent = A2C(
             mg_env_train,
-            config=config,
+            config,
             comment=f"baseline_pymgrid_{experiment}",
             run=run,
         )

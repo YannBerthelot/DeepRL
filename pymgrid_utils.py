@@ -47,7 +47,6 @@ def get_macro_environments(micropolicies):
     mg_test = copy(mg)
 
     mg_env_train = MacroEnvironment({"microgrid": mg_train}, micropolicies)
-
     mg_env_eval = MacroEnvironment({"microgrid": mg_test}, micropolicies)
     print(fake_data["tsSample"][0][1][:, None])
     return mg_env_train, mg_env_eval
@@ -55,16 +54,19 @@ def get_macro_environments(micropolicies):
 
 def get_environments(pv_factor=1.0, action_design="original", export_price_factor=0):
     mg = get_microgrid(id=1, export_price_factor=export_price_factor)
+    mg._data_set_to_use = "all"
+    mg.dataset_to_use_default = "all"
+    mg.TRAIN = False
     mg_train = copy(mg)
     mg_test = copy(mg)
     starts = list(range(0, 6759, 2000))
-
+    starts = [0]
     mg_env_train = CSPLAScenarioEnvironment(
         starts,
-        2000,
+        8760,
         {"microgrid": mg_train},
-        customPVTs=fake_data["tsSample"][0][1][:, None],
-        customLoadTs=fake_data["tsSample"][0][0][:, None],
+        # customPVTs=fake_data["tsSample"][0][1][:, None],
+        # customLoadTs=fake_data["tsSample"][0][0][:, None],
         action_design=action_design,
     )
 
