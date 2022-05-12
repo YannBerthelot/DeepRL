@@ -3,91 +3,113 @@ import torch
 
 
 class RolloutBuffer:
-    def __init__(self, buffer_size) -> None:
+    def __init__(self, buffer_size, gamma, n_steps) -> None:
+        self._n_steps = n_steps
+        self._buffer_size = buffer_size
+        self.gamma = gamma
 
-        self.buffer_size = buffer_size
         self.reset()
 
-    def add(
-        self,
-        state,
-        next_state,
-        action,
-        reward,
-        done,
-        hidden=None,
-        next_hidden=None,
-    ):
-        if self.states.shape[0] == 0:
-            self.states = np.array([state])
-            self.next_states = np.array([next_state])
-            self.actions = np.array([action])
-            self.rewards = np.array([reward])
-            self.dones = np.array([done])
-            if hidden is not None:
-                self.hiddens_h = torch.cat(
-                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
-                )
-                self.next_hiddens_h = torch.cat(
-                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
-                )
-                self.hiddens_c = torch.cat(
-                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
-                )
-                self.next_hiddens_c = torch.cat(
-                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
-                )
-        else:
-            self.states = np.append(self.states, np.array([state]), axis=0)
-            self.next_states = np.append(
-                self.next_states, np.array([next_state]), axis=0
-            )
-            self.actions = np.append(self.actions, np.array([action]), axis=0)
-            self.rewards = np.append(self.rewards, np.array([reward]), axis=0)
-            self.dones = np.append(self.dones, np.array([done]), axis=0)
-            if hidden is not None:
-                self.hiddens_h = torch.cat(
-                    (self.hiddens_h, hidden[0][None, :, :, :]), 0
-                )
-                self.next_hiddens_h = torch.cat(
-                    (self.next_hiddens_h, next_hidden[0][None, :, :, :]), 0
-                )
-                self.hiddens_c = torch.cat(
-                    (self.hiddens_c, hidden[1][None, :, :, :]), 0
-                )
-                self.next_hiddens_c = torch.cat(
-                    (self.next_hiddens_c, next_hidden[1][None, :, :, :]), 0
-                )
+    @property
+    def n_steps(self):
+        return self._n_steps
 
-    def reset(self):
-        self.states = np.array([])
-        self.next_states = np.array([])
-        self.actions = np.array([])
-        self.rewards = np.array([])
-        self.dones = np.array([])
-        self.returns = np.array([])
-        self.hiddens_h = torch.Tensor([])
-        self.next_hiddens_h = torch.Tensor([])
-        self.hiddens_c = torch.Tensor([])
-        self.next_hiddens_c = torch.Tensor([])
+    @property
+    def buffer_size(self):
+        return self._buffer_size
+
+    @property
+    def __len__(self):
+        return len(self.rewards)
+
+    def add(self, reward, done, value, log_prob, entropy, KL_divergence):
+        self.rewards = np.append(self.rewards, reward)
+        self.dones = np.append(self.dones, done)
+        self.values.append(value)
+        self.log_probs.append(log_prob)
+        self.entropies.append(entropy)
+        self.KL_divergences = np.append(self.KL_divergences, KL_divergence)
+        if self.__len__ >= self.buffer_size + self.n_steps - 1:
+            self.full = True
+
+    @staticmethod
+    def compute_returns_and_advantages(
+        rewards, values, dones, gamma, last_val, buffer_size, n_steps
+    ):
+        next_values = values[n_steps:]
+        next_values.append(last_val)
+        n_step_return = 0
+        returns = []
+        for j in range(buffer_size):
+            rewards_list = rewards[j : j + n_steps]
+            for i, reward in enumerate(reversed(rewards_list)):
+                n_step_return = reward + (gamma ** i) * n_step_return
+            returns.append(n_step_return)
+        returns = returns[::-1].copy()
+        if n_steps > 0:
+            return [
+                returns[i]
+                + (1 - dones[i]) * (gamma ** n_steps) * next_values[i]
+                - values[i]
+                for i in range(len(values) - n_steps + 1)
+            ]
+
+    def update_advantages(self, last_val: float):
+        """Wrapper of static method compute_returns_and_advantages
+
+        Args:
+            last_val (float): The last value computed by the value network
+        """
+        self.advantages = self.compute_returns_and_advantages(
+            self.rewards,
+            self.values,
+            self.dones,
+            self.gamma,
+            last_val,
+            self.buffer_size,
+            self.n_steps,
+        )
 
     def show(self):
-        print(
-            "states",
-            self.states,
-            "next_states",
-            self.next_states,
-            "actions",
-            self.actions,
-            "rewards",
-            self.rewards,
-            "dones",
-            self.dones,
-            "hiddens",
-            self.hiddens,
-            "next_hiddens",
-            self.next_hiddens,
-        )
+        print("ADVANTAGES", self.advantages)
+        print("LOG PROBS", self.log_probs)
+        print("ENTROPIES", self.entropies)
+        print("KL_DIVERGENCES", self.KL_divergences)
+
+    def get_steps(self):
+        return self.advantages, self.log_probs, self.entropies, self.KL_divergences
+
+    def get_steps_list(self):
+        for i in range(len(self.advantages)):
+            yield self.advantages[i], self.log_probs[i], self.entropies[
+                i
+            ], self.KL_divergences[i]
+
+    def clear(self):
+        print(self.values)
+        self.rewards = self.rewards[self.buffer_size :]
+        self.dones = self.dones[self.buffer_size :]
+        self.KL_divergences = self.KL_divergences[self.buffer_size :]
+        self.values = self.values[self.buffer_size :]
+        self.log_probs = self.log_probs[self.buffer_size :]
+        self.entropies = self.entropies[self.buffer_size :]
+        print(self.values)
+
+    def reset(self):
+        self.rewards = np.array([])
+        self.dones = np.array([])
+        self.KL_divergences = np.array([])
+        self.values = []
+        self.log_probs = []
+        self.entropies = []
+
+        self.rewards = np.array([])
+        self.dones = np.array([])
+        self.KL_divergences = np.array([])
+        self.values = []
+        self.log_probs = []
+        self.entropies = []
+        self.full = False
 
 
 class Memory:
@@ -140,19 +162,6 @@ class Memory:
 
     def get_step(self, i):
         return {key: values[i] for key, values in self.steps.items()}
-
-    # def _zip(self):
-    #     return zip(
-    #         self.states[: self.n_steps],
-    #         self.actions[: self.n_steps],
-    #         self.rewards[: self.n_steps],
-    #         self.dones[: self.n_steps],
-    #         self.n_step_returns,
-    #     )
-
-    # def reversed(self):
-    #     for data in list(self._zip())[::-1]:
-    #         yield data
 
     def __len__(self):
         return len(self.steps["rewards"])
