@@ -4,10 +4,23 @@ import torch
 
 class RolloutBuffer:
     def __init__(self, buffer_size, gamma, n_steps) -> None:
-        self.n_steps = n_steps
+        self._n_steps = n_steps
+        self._buffer_size = buffer_size
         self.gamma = gamma
-        self.buffer_size = buffer_size
+
         self.reset()
+
+    @property
+    def n_steps(self):
+        return self._n_steps
+
+    @property
+    def buffer_size(self):
+        return self._buffer_size
+
+    @property
+    def __len__(self):
+        return len(self.rewards)
 
     def add(self, reward, done, value, log_prob, entropy, KL_divergence):
         self.rewards = np.append(self.rewards, reward)
@@ -16,42 +29,46 @@ class RolloutBuffer:
         self.log_probs.append(log_prob)
         self.entropies.append(entropy)
         self.KL_divergences = np.append(self.KL_divergences, KL_divergence)
-        if self.__len__() >= self.buffer_size + self.n_steps - 1:
+        if self.__len__ >= self.buffer_size + self.n_steps - 1:
             self.full = True
 
-    def compute_returns_and_advantages(self, last_val):
-        self.next_values = self.values[self.n_steps :]
-        self.next_values.append(last_val)
+    @staticmethod
+    def compute_returns_and_advantages(
+        rewards, values, dones, gamma, last_val, buffer_size, n_steps
+    ):
+        next_values = values[n_steps:]
+        next_values.append(last_val)
         n_step_return = 0
         returns = []
-        for j in range(self.buffer_size):
-            rewards_list = self.rewards[j : j + self.n_steps]
+        for j in range(buffer_size):
+            rewards_list = rewards[j : j + n_steps]
             for i, reward in enumerate(reversed(rewards_list)):
-                n_step_return = reward + (self.gamma ** i) * n_step_return
+                n_step_return = reward + (gamma ** i) * n_step_return
             returns.append(n_step_return)
         returns = returns[::-1].copy()
-        if self.n_steps > 0:
-            self.advantages = [
+        if n_steps > 0:
+            return [
                 returns[i]
-                + (1 - self.dones[i])
-                * (self.gamma ** self.n_steps)
-                * self.next_values[i]
-                - self.values[i]
-                for i in range(len(self.values) - self.n_steps + 1)
+                + (1 - dones[i]) * (gamma ** n_steps) * next_values[i]
+                - values[i]
+                for i in range(len(values) - n_steps + 1)
             ]
 
-        # self.explained_variances = compute_explained_variance(
-        #     np.array(returns),
-        #     self.advantages.detach().numpy(),
-        # )
-        # (
-        #     returns.copy()
-        #     # + (1 - self.dones) * (self.gamma ** self.n_steps) * self.next_values
-        #     - self.values
-        # )
+    def update_advantages(self, last_val: float):
+        """Wrapper of static method compute_returns_and_advantages
 
-    def __len__(self):
-        return len(self.rewards)
+        Args:
+            last_val (float): The last value computed by the value network
+        """
+        self.advantages = self.compute_returns_and_advantages(
+            self.rewards,
+            self.values,
+            self.dones,
+            self.gamma,
+            last_val,
+            self.buffer_size,
+            self.n_steps,
+        )
 
     def show(self):
         print("ADVANTAGES", self.advantages)
@@ -145,19 +162,6 @@ class Memory:
 
     def get_step(self, i):
         return {key: values[i] for key, values in self.steps.items()}
-
-    # def _zip(self):
-    #     return zip(
-    #         self.states[: self.n_steps],
-    #         self.actions[: self.n_steps],
-    #         self.rewards[: self.n_steps],
-    #         self.dones[: self.n_steps],
-    #         self.n_step_returns,
-    #     )
-
-    # def reversed(self):
-    #     for data in list(self._zip())[::-1]:
-    #         yield data
 
     def __len__(self):
         return len(self.steps["rewards"])

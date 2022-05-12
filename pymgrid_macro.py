@@ -5,6 +5,7 @@ from config import config
 from pymgrid_config import pymgrid_config
 from pymgrid_utils import get_environments, get_train_env, get_macro_environments
 
+
 config["name"] = "pymgrid"
 config_global = {**config, **pymgrid_config}
 for n_step in [1, 5, 24, 48, 24 * 7]:
@@ -12,7 +13,7 @@ for n_step in [1, 5, 24, 48, 24 * 7]:
     for experiment in range(1, config["N_EXPERIMENTS"] + 1):
         if config["logging"] == "wandb":
             run = wandb.init(
-                project="Pymgrid macro-agent",
+                project="Pymgrid macro-agent test",
                 entity="yann-berthelot",
                 name=f'{config["name"]} {experiment}/{config["N_EXPERIMENTS"]}',
                 reinit=True,

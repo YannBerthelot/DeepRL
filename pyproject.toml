@@ -20,7 +20,7 @@ wandb = "0.12.10"
 scikit-learn = "^1.0.2"
 cvxpy = "^1.2.0"
 cvxopt = "^1.3.0"
-pymgrid = {git = "https://github.com/YannBerthelot/pymgrid", rev = "regime_expert_policies_2"}
+pymgrid = {git = "https://github.com/YannBerthelot/pymgrid", rev = "clean_slate"}
 
 [tool.poetry.dev-dependencies]
 
