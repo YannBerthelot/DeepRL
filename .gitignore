@@ -10,3 +10,4 @@ personal_config.py
 /data
 restats
 *.txt
+*.pkl
