@@ -1,32 +1,22 @@
 import pickle
-
+import warnings
 import gym
 import wandb
-from pymgrid.Environments.MacroEnvironment import RBCPolicy
+import numpy as np
+from tqdm import tqdm
+import wandb
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-# Network creator tool
-from network_utils import t, compute_KL_divergence
-from utils import LinearSchedule
-from normalize import SimpleStandardizer
-
 # Base class for Agent
-from agent import Agent
-from buffer import RolloutBuffer
-import warnings
+from agents.agent import Agent
+from network.utils import t, compute_KL_divergence, LinearSchedule
+from network.network import ActorCriticRecurrentNetworks, BaseTorchAgent
 
-# The network we create and the device to run it on
-from network import ActorCriticRecurrentNetworks, BaseTorchAgent
-
-
-# Numpy
-import numpy as np
-
-# For logging
-from tqdm import tqdm
-import wandb
+# Network creator tool
+from utils.normalize import SimpleStandardizer
+from utils.buffer import RolloutBuffer
 
 
 class A2C(Agent):

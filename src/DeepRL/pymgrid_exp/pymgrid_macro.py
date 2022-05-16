@@ -1,6 +1,6 @@
 import os
 import wandb
-from A2C import A2C
+from DeepRL.agents.A2C import A2C
 from config import config
 from pymgrid_config import pymgrid_config
 from pymgrid_utils import get_environments, get_train_env, get_macro_environments

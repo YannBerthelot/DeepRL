@@ -5,10 +5,9 @@ from typing import Tuple
 # PyTorch
 import torch
 import torch.nn as nn
-from utils import get_device
 
 # Network creator tool
-from network_utils import get_network_from_architecture
+from network.utils import get_network_from_architecture, get_device
 
 # Numpy
 import numpy as np

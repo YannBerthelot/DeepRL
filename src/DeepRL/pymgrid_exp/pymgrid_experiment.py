@@ -1,10 +1,13 @@
 import wandb
-from A2C import A2C
-from config import config
-from pymgrid_config import pymgrid_config
-from pymgrid_utils import get_environments, get_train_env
+from agents.A2C import A2C
 
-if __name__ == "__main__":
+# from .DeepRL.agents.A2C import A2C
+from config import config
+from pymgrid_exp.pymgrid_config import pymgrid_config
+from pymgrid_exp.utils import get_environments, get_train_env
+
+
+def pymgrid_experiment():
     config["name"] = "pymgrid"
     config_global = {**config, **pymgrid_config}
     for n_step in [1]:
@@ -47,3 +50,7 @@ if __name__ == "__main__":
             )
             if config["logging"] == "wandb":
                 run.finish()
+
+
+if __name__ == "__main__":
+    pymgrid_experiment()

@@ -24,7 +24,7 @@ def get_microgrid(id=1, export_price_factor=0.0):
     return mg
 
 
-with open("fakeYears_archId1_15042022.pkl", "rb") as f:
+with open("data/fakeYears_archId1_15042022.pkl", "rb") as f:
     fake_data = pickle.load(f)
 
 

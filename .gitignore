@@ -1,8 +1,9 @@
 *.lock
+*.pth
 __pycache__
-/models
-/logs
-/wandb
+src/DeepRL/models/
+src/DeepRL/wandb/
+src/DeepRL/logs/
 .ipynb_checkpoints
 *.ipynb
 personal_config.py

@@ -1,12 +1,12 @@
-from abc import abstractmethod
 import os
 import pickle
+from abc import abstractmethod
+from datetime import date
 import gym
 import wandb
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from datetime import date
-from normalize import SimpleMinMaxScaler, SimpleStandardizer, RunningMeanStd
+from utils.normalize import SimpleMinMaxScaler, SimpleStandardizer, RunningMeanStd
 
 
 class Agent:
