@@ -6,7 +6,11 @@ import gym
 import wandb
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from utils.normalize import SimpleMinMaxScaler, SimpleStandardizer, RunningMeanStd
+from utils.normalize import (
+    SimpleMinMaxScaler,
+    SimpleStandardizer,
+    RunningMeanStd,
+)
 
 
 class Agent:
