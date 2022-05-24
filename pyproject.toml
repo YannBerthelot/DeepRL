@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "DeepRLYB"
+name = "deeprlyb"
 version = "0.1.8"
 description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
