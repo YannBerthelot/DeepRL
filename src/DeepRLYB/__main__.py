@@ -1,6 +1,5 @@
 import os
 import argparse
-from copy import copy
 import gym
 import wandb
 from deeprlyb.agents.A2C import A2C
@@ -11,7 +10,14 @@ if __name__ == "__main__":
     parse = argparse.ArgumentParser()
     parse.add_argument("-s")
     args = parse.parse_args()
-    config = read_config(args.s)
+    if args is not None:
+        print("Using default config")
+        print(os.listdir())
+        dir = os.path.dirname(__file__)
+        config = read_config(os.path.join(dir, "config.ini"))
+    else:
+        config = read_config(args.s)
+
     os.makedirs(config["PATHS"]["tensorboard_path"], exist_ok=True)
     env = gym.make(config["GLOBAL"]["environment"])
     config["GLOBAL"]["name"] = "MLP"
@@ -27,7 +33,7 @@ if __name__ == "__main__":
             )
         else:
             run = None
-        comment = f"config_{i}_{experiment}"
+        comment = f"config_{experiment}"
         agent = A2C(env, config=config, comment=comment, run=run)
         agent.train(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
         agent.load(f"{comment}_best")

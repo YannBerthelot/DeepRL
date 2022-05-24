@@ -209,6 +209,7 @@ class A2C(Agent):
                 self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
             # print(f"test number {episode} : {rewards_sum}")
             episode_rewards.append(rewards_sum)
+        env.close()
         if self.config["GLOBAL"]["logging"] == "tensorboard":
             self.network.writer.add_hparams(
                 self.config,
