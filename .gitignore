@@ -1,9 +1,10 @@
 *.lock
 *.pth
 __pycache__
-src/DeepRLYB/models/
-src/DeepRLYB/wandb/
-src/DeepRLYB/logs/
+src/deeprlyb/models/
+src/deeprlyb/wandb/
+src/deeprlyb/logs/
+src/deeprlyb/pymgrid_exp/
 .ipynb_checkpoints
 *.ipynb
 personal_config.py
