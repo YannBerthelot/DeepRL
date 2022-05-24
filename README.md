@@ -7,7 +7,8 @@ Implemented agents are:
 
 ## Installation
 
-Not really packaged at the moment, just clone the repo and use the things. Install poetry if necessary, otherwise deal with package install.
+You need to have swig installed for it to work.
+Packaging w.i.p.
 
 ```bash
 git clone https://github.com/YannBerthelot/DeepRL.git
