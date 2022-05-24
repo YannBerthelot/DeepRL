@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 # Network creator tool
-from network.utils import get_network_from_architecture, get_device
+from deeprlyb.network.utils import get_network_from_architecture, get_device
 
 # Numpy
 import numpy as np
@@ -19,7 +19,7 @@ class BaseTorchAgent(nn.Module):
     def __init__(self, agent):
         super(BaseTorchAgent, self).__init__()
         self._agent = agent
-        self.device = get_device(self.config["DEVICE"])
+        self.device = get_device(self.config["HARDWARE"]["device"])
 
     @property
     def env(self):
@@ -31,7 +31,7 @@ class BaseTorchAgent(nn.Module):
 
     @property
     def continuous(self):
-        return self._agent.config["CONTINUOUS"]
+        return self._agent.config["GLOBAL"].getboolean("continuous")
 
     @property
     def config(self):
@@ -98,15 +98,15 @@ class ActorCriticRecurrentNetworks(nn.Module):
 
     @property
     def common_architecture(self):
-        return eval(self.config["COMMON_NN_ARCHITECTURE"])
+        return eval(self.config["NETWORKS"]["common_nn_architecture"])
 
     @property
     def actor_architecture(self):
-        return eval(self.config["ACTOR_NN_ARCHITECTURE"])
+        return eval(self.config["NETWORKS"]["actor_nn_architecture"])
 
     @property
     def critic_architecture(self):
-        return eval(self.config["CRITIC_NN_ARCHITECTURE"])
+        return eval(self.config["NETWORKS"]["critic_nn_architecture"])
 
     @property
     def state_dim(self):
@@ -127,14 +127,14 @@ class ActorCriticRecurrentNetworks(nn.Module):
     def init_layers(self):
         # Device to run computations on
         self.device = "CPU"
-        if self.config["CONTINUOUS"]:
-            if self.config["LAW"] == "beta":
+        if self.config["GLOBAL"].getboolean("continuous"):
+            if self.config["GLOBAL"]["law"] == "beta":
                 final_activation = "relu"
-            elif self.config["LAW"] == "normal":
+            elif self.config["GLOBAL"]["law"] == "normal":
                 final_activation = "tanh"
         else:
             final_activation = None
-        if self.config["RECURRENT"]:
+        if self.config["NETWORKS"]["recurrent"]:
             # LSTM cell(s)
             self._recurrent_layer = nn.LSTM(
                 self.common_architecture[-1],
@@ -148,7 +148,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.state_dim,
                 self.common_architecture[-1],
                 self.common_architecture,
-                self.config["COMMON_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["common_activation_function"],
                 mode="common",
             )
 
@@ -157,7 +157,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.hidden_dim,
                 self.action_dim,
                 self.actor_architecture,
-                self.config["ACTOR_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["actor_activation_function"],
                 mode="actor",
                 final_activation=final_activation,
             )
@@ -166,7 +166,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.hidden_dim,
                 1,
                 self.critic_architecture,
-                self.config["CRITIC_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["critic_activation_function"],
                 mode="critic",
             )
         else:
@@ -175,7 +175,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.state_dim,
                 self.common_architecture[-1],
                 self.common_architecture,
-                self.config["COMMON_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["common_activation_function"],
                 mode="common",
             )
 
@@ -184,7 +184,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.common_architecture[-1],
                 self.action_dim,
                 self.actor_architecture,
-                self.config["ACTOR_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["actor_activation_function"],
                 mode="actor",
             )
             # Layers after the LSTM specific to the critic
@@ -192,10 +192,10 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 self.common_architecture[-1],
                 1,
                 self.critic_architecture,
-                self.config["CRITIC_ACTIVATION_FUNCTION"],
+                self.config["NETWORKS"]["critic_activation_function"],
                 mode="critic",
             )
-        if self.config["CONTINUOUS"]:
+        if self.config["GLOBAL"].getboolean("continuous"):
             logstds_param = nn.Parameter(torch.full((self.action_dim,), 0.1))
             self.register_parameter("logstds", logstds_param)
 
@@ -204,7 +204,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         x = x.view(
             -1,
             1,
-            eval(self.config["COMMON_NN_ARCHITECTURE"])[-1],
+            eval(self.config["NETWORKS"]["common_nn_architecture"])[-1],
         )
 
         x, hidden = self._recurrent_layer(x, hidden)
@@ -238,14 +238,14 @@ class ActorCriticRecurrentNetworks(nn.Module):
             Tuple[torch.Tensor, torch.Tensor]: A tuple containing the action probabilities and the new hidden state
         """
         x = self._actor_layers(state)
-        if self.config["CONTINUOUS"]:
+        if self.config["GLOBAL"].getboolean("continuous"):
             stds = torch.clamp(self.logstds.exp(), 1e-3, 0.1)
-            if self.config["LAW"] == "normal":
+            if self.config["GLOBAL"]["law"] == "normal":
                 return (torch.distributions.Normal(x, stds),)
-            elif self.config["LAW"] == "beta":
+            elif self.config["GLOBAL"]["law"] == "beta":
                 return torch.distributions.Beta(x + ZERO, stds + ZERO)
             else:
-                raise ValueError(f'Unknown law {self.config["LAW"]}')
+                raise ValueError(f'Unknown law {self.config["GLOBAL"]["law"]}')
         else:
             dist = torch.distributions.Categorical(probs=x)
             return dist

@@ -6,7 +6,7 @@ import gym
 import wandb
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from utils.normalize import (
+from deeprlyb.utils.normalize import (
     SimpleMinMaxScaler,
     SimpleStandardizer,
     RunningMeanStd,
@@ -53,7 +53,7 @@ class Agent:
     def action_shape(self):
         return (
             self.env.action_space.shape[0]
-            if self.config["CONTINUOUS"]
+            if self.config["GLOBAL"].getboolean("continuous")
             else self.env.action_space.n
         )
 
@@ -91,7 +91,7 @@ class Agent:
         artifact = None
         if reward_sum >= self.best_episode_reward:
             self.best_episode_reward = reward_sum
-            if self.config["logging"] == "wandb":
+            if self.config["GLOBAL"]["logging"] == "wandb":
                 wandb.run.summary["Train/best reward sum"] = reward_sum
                 artifact = wandb.Artifact(f"{self.comment}_best", type="model")
 
@@ -101,9 +101,11 @@ class Agent:
     def early_stopping(self, reward_sum):
         if reward_sum == self.old_reward_sum:
             self.constant_reward_counter += 1
-            if self.constant_reward_counter > self.config["EARLY_STOPPING_STEPS"]:
+            if self.constant_reward_counter > self.config["GLOBAL"].getint(
+                "early_stopping_steps"
+            ):
                 print(
-                    f'Early stopping due to constant reward for {self.config["EARLY_STOPPING_STEPS"]} steps'
+                    f'Early stopping due to constant reward for {self.config["GLOBAL"].getint("early_stopping_steps")} steps'
                 )
                 return True
         else:
@@ -115,7 +117,7 @@ class Agent:
         action_frequencies = {
             action: n / n_actions for action, n in actions_taken.items()
         }
-        if self.config["logging"] == "wandb":
+        if self.config["GLOBAL"]["logging"] == "wandb":
             for action, frequency in action_frequencies.items():
                 wandb.log(
                     {
@@ -132,14 +134,14 @@ class Agent:
                 step=self.t,
                 commit=True,
             )
-        elif self.config["logging"] == "tensorboard":
+        elif self.config["GLOBAL"]["logging"] == "tensorboard":
             self.network.writer.add_scalar(
                 "Reward/Episode_sum_of_rewards", reward_sum, self.episode
             )
 
     def scaling(self, obs, reward, fit=True, transform=True):
         # Scaling
-        if self.config["SCALING"]:
+        if self.config["GLOBAL"].getboolean("scaling"):
             if fit:
                 self.obs_scaler.partial_fit(obs)
                 self.reward_scaler.partial_fit(np.array([reward]))
@@ -150,22 +152,22 @@ class Agent:
 
     def create_dirs(self):
         today = date.today().strftime("%d-%m-%Y")
-        os.makedirs(self.config["MODEL_PATH"], exist_ok=True)
-        return f'{self.config["TENSORBOARD_PATH"]}/{self.config["ENVIRONMENT"]}/{today}/{self.comment}'
+        os.makedirs(self.config["PATHS"]["model_path"], exist_ok=True)
+        return f'{self.config["PATHS"]["tensorboard_path"]}/{self.config["GLOBAL"]["environment"]}/{today}/{self.comment}'
 
     def get_scalers(self):
-        if self.config["SCALING"]:
-            if self.config["SCALING_METHOD"] == "standardize":
+        if self.config["GLOBAL"].getboolean("SCALING"):
+            if self.config["GLOBAL"]["scaling_method"] == "standardize":
                 obs_scaler = SimpleStandardizer(clip=True)
                 reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)
                 target_scaler = SimpleStandardizer(shift_mean=False, clip=False)
-            elif self.config["SCALING_METHOD"] == "normalize":
+            elif self.config["GLOBAL"]["scaling_method"] == "normalize":
                 obs_scaler = MinMaxScaler(feature_range=(-1, 1))
                 reward_scaler = SimpleMinMaxScaler(
                     maxs=[100], mins=[-100], feature_range=(-1, 1)
                 )
         else:
-            self.config["LEARNING_START"] = 0
+            self.config["GLOBAL"]["learning_start"] = "0"
             obs_scaler = None
             reward_scaler = None
             target_scaler = None
@@ -173,9 +175,11 @@ class Agent:
 
     def train_logging(self, artifact):
         os.makedirs("data", exist_ok=True)
-        if self.config["logging"] == "wandb":
+        if self.config["GLOBAL"]["logging"] == "wandb":
             artifact = wandb.Artifact(f"{self.comment}_model", type="model")
-            artifact.add_file(f'{self.config["MODEL_PATH"]}/{self.comment}_best.pth')
+            artifact.add_file(
+                f'{self.config["GLOBAL"]["model_path"]}/{self.comment}_best.pth'
+            )
             # Save the artifact version to W&B and mark it as the output of this run
             self.run.log_artifact(artifact)
 

@@ -10,13 +10,13 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 # Base class for Agent
-from agents.agent import Agent
-from network.utils import t, compute_KL_divergence, LinearSchedule
-from network.network import ActorCriticRecurrentNetworks, BaseTorchAgent
+from deeprlyb.agents.agent import Agent
+from deeprlyb.network.utils import t, compute_KL_divergence, LinearSchedule
+from deeprlyb.network.network import ActorCriticRecurrentNetworks, BaseTorchAgent
 
 # Network creator tool
-from utils.normalize import SimpleStandardizer
-from utils.buffer import RolloutBuffer
+from deeprlyb.utils.normalize import SimpleStandardizer
+from deeprlyb.utils.buffer import RolloutBuffer
 
 
 class A2C(Agent):
@@ -27,9 +27,9 @@ class A2C(Agent):
         ).__init__(env, config, comment, run)
 
         self.rollout = RolloutBuffer(
-            buffer_size=config["BUFFER_SIZE"],
-            gamma=config["GAMMA"],
-            n_steps=config["N_STEPS"],
+            buffer_size=config["NETWORKS"].getint("buffer_size"),
+            gamma=config["AGENT"].getfloat("gamma"),
+            n_steps=config["AGENT"].getint("n_steps"),
         )
 
         self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers()
@@ -86,11 +86,13 @@ class A2C(Agent):
         self.t, t_old, self.constant_reward_counter = 1, 0, 0
 
         # Pre-Training
-        if self.config["LEARNING_START"] > 0:
+        if self.config["GLOBAL"].getfloat("learning_start") > 0:
             print("--- Pre-Training ---")
             t_pre_train = 1
-            pbar = tqdm(total=self.config["LEARNING_START"], initial=1)
-            while t_pre_train <= self.config["LEARNING_START"]:
+            pbar = tqdm(
+                total=self.config["GLOBAL"].getfloat("learning_start"), initial=1
+            )
+            while t_pre_train <= self.config["GLOBAL"].getfloat("learning_start"):
                 pbar.update(t_pre_train - t_old)
                 t_old = t_pre_train
                 done, obs, rewards = False, env.reset(), []
@@ -177,7 +179,7 @@ class A2C(Agent):
             # Generate episode
             while not done:
                 # Select the action using the current policy
-                if self.config["SCALING"]:
+                if self.config["GLOBAL"].getboolean("scaling"):
                     obs = self.obs_scaler.transform(obs)
                 action, next_hidden, _ = self.select_action(obs, hidden)
 
@@ -196,18 +198,18 @@ class A2C(Agent):
 
             if rewards_sum > best_test_episode_reward:
                 best_test_episode_reward = rewards_sum
-                if self.config["logging"] == "wandb":
+                if self.config["GLOBAL"]["logging"] == "wandb":
                     wandb.run.summary["Test/best reward sum"] = rewards_sum
             # Logging
-            if self.config["logging"] == "wandb":
+            if self.config["GLOBAL"]["logging"] == "wandb":
                 wandb.log(
                     {"Test/reward": rewards_sum, "Test/episode": episode}, commit=True
                 )
-            elif self.config["logging"] == "tensorboard":
+            elif self.config["GLOBAL"]["logging"] == "tensorboard":
                 self.network.writer.add_scalar("Reward/test", rewards_sum, episode)
             # print(f"test number {episode} : {rewards_sum}")
             episode_rewards.append(rewards_sum)
-        if self.config["logging"] == "tensorboard":
+        if self.config["GLOBAL"]["logging"] == "tensorboard":
             self.network.writer.add_hparams(
                 self.config,
                 {
@@ -227,7 +229,7 @@ class A2C(Agent):
                 log_prob,
                 entropy,
                 kl_divergence,
-                finished=i == self.config["BUFFER_SIZE"] - 1,
+                finished=i == self.config["NETWORKS"].getint("buffer_size") - 1,
             )
 
 
@@ -239,31 +241,27 @@ class TorchA2C(BaseTorchAgent):
         self.actorcritic = ActorCriticRecurrentNetworks(
             agent.obs_shape[0],
             agent.action_shape,
-            self.config["HIDDEN_SIZE"],
-            self.config["HIDDEN_LAYERS"],
+            self.config["NETWORKS"].getint("hidden_size"),
+            self.config["NETWORKS"].getint("hidden_layers"),
             self.config,
         )
         print(self.actorcritic)
 
-        if self.config["logging"] == "wandb":
+        if self.config["GLOBAL"]["logging"] == "wandb":
             wandb.watch(self.actorcritic)
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
         self.optimizer = torch.optim.Adam(
             self.actorcritic.parameters(),
-            lr=self.config["LEARNING_RATE"],
+            lr=self.config["NETWORKS"].getfloat("learning_rate"),
         )
-        # self.critic_optimizer = optim.Adam(
-        #     self.actorcritic.critic_layers.parameters(),
-        #     lr=self.config["LEARNING_RATE"],
-        # )
 
         self.target_var_scaler = SimpleStandardizer()
         self.advantages_var_scaler = SimpleStandardizer()
         self.lr_scheduler = LinearSchedule(
-            self.config["LEARNING_RATE"],
-            self.config["LEARNING_RATE_END"],
-            self.config["NB_TIMESTEPS_TRAIN"],
+            self.config["NETWORKS"].getfloat("learning_rate"),
+            self.config["NETWORKS"].getfloat("learning_rate_end"),
+            self.config["GLOBAL"].getfloat("nb_timesteps_train"),
         )
         # Init stuff
         self.loss = None
@@ -283,7 +281,7 @@ class TorchA2C(BaseTorchAgent):
         observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)
         embedded_observation = self.actorcritic.forward(observation)
 
-        if self.config["RECURRENT"]:
+        if self.config["NETWORKS"].getboolean("recurrent"):
             new_embedded_observation, new_hidden = self.actorcritic.LSTM(
                 embedded_observation, hidden
             )
@@ -318,18 +316,18 @@ class TorchA2C(BaseTorchAgent):
         loss_params = (value, log_prob, entropy, KL_divergence)
 
         if self.continuous:
-            if self.config["LAW"] == "normal":
+            if self.config["GLOBAL"]["law"] == "normal":
                 action = np.clip(
                     action, self.env.action_space.low, self.env.action_space.high
                 )
-            elif self.config["LAW"] == "beta":
+            elif self.config["GLOBAL"]["law"] == "beta":
                 action = (
                     action * (self.env.action_space.high - self.env.action_space.low)
                     + self.env.action_space.low
                 )
             return action.detach().data.numpy()[0][0], new_hidden
         else:
-            assert len(action) == 1, "Bug action"
+            assert len(action) == 1, "Bug action dim is larger than 1"
             action = action.flatten()[0]
             return action.detach().data.numpy(), new_hidden, loss_params
 
@@ -368,14 +366,19 @@ class TorchA2C(BaseTorchAgent):
         kl_loss = -kl_divergence
         loss = (
             actor_loss
-            + self.config["VALUE_FACTOR"] * critic_loss
-            + self.config["ENTROPY_FACTOR"] * entropy_loss
-            # + self.config["KL_FACTOR"] * kl_loss
+            + self.config["AGENT"].getfloat("value_factor") * critic_loss
+            + self.config["AGENT"].getfloat("entropy_factor") * entropy_loss
+            # + self.config["AGENT"].getfloat("KL_factor") * kl_loss
         )
         self.optimizer.zero_grad()
         loss.backward(retain_graph=True)
-        if self.config["GRADIENT_CLIPPING"] is not None:
+        try:
+            float(self.config["AGENT"]["gradient_clipping"])
+        except:
+            pass
+        else:
             self.gradient_clipping()
+
         if finished:
             self.optimizer.step()
 
@@ -387,8 +390,9 @@ class TorchA2C(BaseTorchAgent):
         # self.old_dist = dist
 
         # Logging
-        if self.writer:
-            if self.config["logging"] == "tensorboard":
+
+        if self.config["GLOBAL"]["logging"] == "tensorboard":
+            if self.writer:
                 self.writer.add_scalar("Train/entropy loss", -entropy_loss, self.index)
                 self.writer.add_scalar(
                     "Train/leaarning rate",
@@ -402,9 +406,9 @@ class TorchA2C(BaseTorchAgent):
                 #     "Train/explained variance", explained_variance, self.index
                 # )
                 # self.writer.add_scalar("Train/kl divergence", KL_divergence, self.index)
-        else:
-            warnings.warn("No Tensorboard writer available")
-        if self.config["logging"] == "wandb":
+            else:
+                warnings.warn("No Tensorboard writer available")
+        elif self.config["GLOBAL"]["logging"] == "wandb":
             wandb.log(
                 {
                     "Train/entropy loss": -entropy_loss,
@@ -457,7 +461,7 @@ class TorchA2C(BaseTorchAgent):
         Args:
             name (str, optional): [Name of the model]. Defaults to "model".
         """
-        torch.save(self.actorcritic, f'{self.config["MODEL_PATH"]}/{name}.pth')
+        torch.save(self.actorcritic, f'{self.config["PATHS"]["model_path"]}/{name}.pth')
 
     def load(self, name: str = "model"):
         """
@@ -467,13 +471,15 @@ class TorchA2C(BaseTorchAgent):
             name (str, optional): The model to be loaded (it should be in the "models" folder). Defaults to "model".
         """
         print("Loading")
-        self.actorcritic = torch.load(f'{self.config["MODEL_PATH"]}/{name}.pth')
+        self.actorcritic = torch.load(
+            f'{self.config["PATHS"]["model_path"]}/{name}.pth'
+        )
         self.actorcritic.config = self.config
 
         print(self.actorcritic)
 
     def get_initial_states(self):
-        if self.config["RECURRENT"]:
+        if self.config["AGENT"].getboolean("recurrent"):
             h_0, c_0 = None, None
 
             h_0 = torch.zeros(
@@ -507,5 +513,5 @@ class TorchA2C(BaseTorchAgent):
     def gradient_clipping(self):
         nn.utils.clip_grad_norm_(
             [p for g in self.optimizer.param_groups for p in g["params"]],
-            self.config["GRADIENT_CLIPPING"],
-        )  # gradient clipping
+            self.config["AGENT"].getfloat("gradient_clipping"),
+        )
