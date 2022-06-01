@@ -178,7 +178,7 @@ class Agent:
         if self.config["GLOBAL"]["logging"] == "wandb":
             artifact = wandb.Artifact(f"{self.comment}_model", type="model")
             artifact.add_file(
-                f'{self.config["GLOBAL"]["model_path"]}/{self.comment}_best.pth'
+                f'{self.config["PATHS"]["model_path"]}/{self.comment}_best.pth'
             )
             # Save the artifact version to W&B and mark it as the output of this run
             self.run.log_artifact(artifact)
