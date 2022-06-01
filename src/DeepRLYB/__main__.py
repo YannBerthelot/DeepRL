@@ -1,5 +1,4 @@
 import os
-import argparse
 import gym
 import wandb
 from deeprlyb.agents.A2C import A2C
@@ -7,17 +6,7 @@ from deeprlyb.utils.config import read_config
 
 
 if __name__ == "__main__":
-    parse = argparse.ArgumentParser()
-    parse.add_argument("-s")
-    args = parse.parse_args()
-    if args is not None:
-        print("Using default config")
-        print(os.listdir())
-        dir = os.path.dirname(__file__)
-        config = read_config(os.path.join(dir, "config.ini"))
-    else:
-        config = read_config(args.s)
-
+    config = read_config()
     os.makedirs(config["PATHS"]["tensorboard_path"], exist_ok=True)
     env = gym.make(config["GLOBAL"]["environment"])
     config["GLOBAL"]["name"] = "MLP"

@@ -1,10 +1,23 @@
+import os
 import argparse
 import configparser
 import platform
 import torch
 
 
-def read_config(config_file: str) -> configparser.ConfigParser:
+def read_config() -> configparser.ConfigParser:
+    parse = argparse.ArgumentParser()
+    parse.add_argument("-s")
+    args = parse.parse_args()
+    if args is None:
+        print("Using default config")
+        print(os.listdir())
+        dir = os.path.dirname(__file__)
+        config_file = os.path.join(dir, "config.ini")
+    else:
+        config_file = args.s
+    print("config file", config_file, args)
+
     if not config_file.endswith(".ini"):
         raise ValueError(
             f'Configuration file {config_file} is in the {config_file.split(".")[-1]} extension, should be .ini'
