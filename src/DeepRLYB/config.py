@@ -11,21 +11,25 @@ config = {
     "CPU": platform.processor(),
     "GPU": GPU_NAME,
     # GLOBAL INFO
-    "ENVIRONMENT": "LunarLander-v2",
+    "ENVIRONMENT": "CartPole-v1",
+    "RENDER": False,
     # AGENT INFO
     # General
     "AGENT": "n-steps A2C",
     "GAMMA": 0.99,
-    "NB_TIMESTEPS_TRAIN": 2e5,
-    "NB_EPISODES_TEST": 50,
+    "NB_TIMESTEPS_TRAIN": 1e4,
+    "NB_EPISODES_TEST": 1,
     "VALUE_FACTOR": 0.5,
-    "ENTROPY_FACTOR": 0.005,
+    "ENTROPY_FACTOR": 0,
+    "KL_FACTOR": 0.0000,
+    "LEARNING_START": 1e3,
     # Specific
-    "N_STEPS": 5,
+    "N_STEPS": 1,
     # NETWORKS
-    "RECURRENT": True,
-    "LEARNING_RATE": 1e-4,
-    "TARGET_UPDATE": 64,
+    "RECURRENT": False,
+    "GRADIENT_CLIPPING": 0.5,
+    "LEARNING_RATE": 5e-5,
+    "LEARNING_RATE_END": 1e-6,
     # RNN
     "HIDDEN_SIZE": 64,
     "HIDDEN_LAYERS": 1,
@@ -33,11 +37,9 @@ config = {
     "COMMON_ACTIVATION_FUNCTION": "relu",
     # Actor
     "ACTOR_NN_ARCHITECTURE": "[32]",
-    "ACTOR_DROPOUT": 0.0,
     "ACTOR_ACTIVATION_FUNCTION": "tanh",
     # Critic
     "CRITIC_NN_ARCHITECTURE": "[32]",
-    "CRITIC_DROPOUT": 0.0,
     "CRITIC_ACTIVATION_FUNCTION": "relu",
     # PATHS
     "TENSORBOARD_PATH": "logs",
@@ -46,8 +48,13 @@ config = {
     "N_EXPERIMENTS": 3,
     "EARLY_STOPPING_STEPS": 10000,
     # Logging
-    "logging": "wandb",
+    "logging": "Tensorboard",
     # Normalization
-    "NORMALIZE": "standardize",
-    "LEARNING_START": 1000,
+    "SCALING": True,
+    "SCALING_METHOD": "standardize",
+    # Continuous
+    "CONTINUOUS": False,
+    "LAW": "normal",
+    "BUFFER_SIZE": 1,
+    "NORMALIZE_ADVANTAGES": False,
 }

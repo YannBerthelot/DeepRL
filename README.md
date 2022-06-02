@@ -7,7 +7,8 @@ Implemented agents are:
 
 ## Installation
 
-Not really packaged at the moment, just clone the repo and use the things. Install poetry if necessary, otherwise deal with package install.
+You need to have swig installed for it to work.
+Packaging w.i.p.
 
 ```bash
 git clone https://github.com/YannBerthelot/DeepRL.git
@@ -31,10 +32,24 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## To-do
 
-- [x] Merge n_steps A2C and LSTM A2C
-- [ ] Merge A2C and n_steps A2C
 - [x] Add normalization and standardization of states and rewards
-- [ ] Add normalization and standardization of target
+- [x] Add normalization and standardization of target
 - [x] Add entropy
-- [ ] Add tests
-- [ ] Add policy and target networks
+- [x] Add policy and target networks
+- [x] Add explained variance
+- [x] Add schedules for parameters (e.g. learning rate)
+- [x] Add LSTM (multi-layers included and batch support included)
+- [x] Add rollout buffer and switch to batch learning
+
+### Priority
+
+- [ ] Correct agent testing
+- [ ] Rework continuous actions to handle batch
+
+### Optionnal
+
+- [ ] Re-add n-step A2C (that works with batch)
+- [ ] Add testing during training to select agent to save
+- [ ] Rework action selection logging
+- [ ] Add tests (cf : https://andyljones.com/posts/rl-debugging.html)
+- [ ] Package the code into a Python lib
