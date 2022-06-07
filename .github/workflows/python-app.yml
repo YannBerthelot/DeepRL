@@ -29,9 +29,3 @@ jobs:
     - name: Test with unittest
       run: |
         poetry run python -m unittest tests/test_normalize.py
-© 2022 GitHub, Inc.
-Terms
-Privacy
-Security
-Status
-Docs
