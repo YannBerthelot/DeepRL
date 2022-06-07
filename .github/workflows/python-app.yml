@@ -6,7 +6,7 @@ on:
       - 'docs/**'
       - '.cirrus.yml'
     branches:
-      - master
+      - main
       - develop
   pull_request: 
     paths-ignore:
