@@ -5,18 +5,21 @@ import platform
 import torch
 
 
-def read_config() -> configparser.ConfigParser:
-    parse = argparse.ArgumentParser()
-    parse.add_argument("-s")
-    args = parse.parse_args()
-    if args is None:
-        print("Using default config")
-        print(os.listdir())
-        dir = os.path.dirname(__file__)
-        config_file = os.path.join(dir, "config.ini")
+def read_config(file=None) -> configparser.ConfigParser:
+    if file is None:
+        parse = argparse.ArgumentParser()
+        parse.add_argument("-s")
+        args = parse.parse_args()
+
+        if args is None:
+            print("Using default config")
+            print(os.listdir())
+            dir = os.path.dirname(__file__)
+            config_file = os.path.join(dir, "config.ini")
+        else:
+            config_file = args.s
     else:
-        config_file = args.s
-    print("config file", config_file, args)
+        config_file = file
 
     if not config_file.endswith(".ini"):
         raise ValueError(

@@ -15,3 +15,4 @@ restats
 *.pkl
 /dist
 /logs
+/test_package
