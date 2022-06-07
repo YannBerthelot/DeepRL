@@ -138,3 +138,25 @@ class ActorCriticRecurrentNetworks(nn.Module):
             else:
                 input = layer(input)
         return input, hiddens
+
+    def get_initial_states(hidden_size, num_layers):
+        h_0, c_0 = None, None
+
+        h_0 = torch.zeros(
+            (
+                num_layers,
+                1,
+                hidden_size,
+            ),
+            dtype=torch.float,
+        )
+
+        c_0 = torch.zeros(
+            (
+                num_layers,
+                1,
+                hidden_size,
+            ),
+            dtype=torch.float,
+        )
+        return (h_0, c_0)
