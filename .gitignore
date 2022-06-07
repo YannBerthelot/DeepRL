@@ -1,10 +1,8 @@
-*.lock
 *.pth
 __pycache__
 src/deeprlyb/models/
 src/deeprlyb/wandb/
 src/deeprlyb/logs/
-src/deeprlyb/pymgrid_exp/
 .ipynb_checkpoints
 *.ipynb
 personal_config.py
@@ -15,3 +13,4 @@ restats
 *.pkl
 /dist
 /logs
+/test_package

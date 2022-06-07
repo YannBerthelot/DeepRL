@@ -1,8 +1,9 @@
 [tool.poetry]
 name = "deeprlyb"
-version = "0.2.2"
+version = "0.3.0"
 description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
+
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.9"
