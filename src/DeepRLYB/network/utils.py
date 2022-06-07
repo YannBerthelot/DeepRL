@@ -1,3 +1,4 @@
+import re
 import torch
 import torch.nn as nn
 from typing import List
@@ -21,8 +22,8 @@ def add_final_layer(activation, layers):
 
 
 def get_network_from_architecture(
-    input_shape,
-    output_shape,
+    input_shape: int,
+    output_shape: int,
     architecture: List[int],
     activation_function: str,
     mode: str = "actor",
@@ -39,13 +40,16 @@ def get_network_from_architecture(
     Returns:
         torch.nn.modules.container.Sequential: The pytorch network
     """
-    if activation_function == "relu":
+    if activation_function.lower() == "relu":
         activation = nn.ReLU()
-    elif activation_function == "tanh":
+    elif activation_function.lower() == "tanh":
         activation = nn.Tanh()
     else:
-        raise NotImplementedError
+        raise NotImplementedError(
+            f"No activation function like {activation_function} implemented"
+        )
 
+    # Trivial cases
     if len(architecture) < 1:
         return nn.Linear(input_shape, output_shape)
     elif len(architecture) == 1:
@@ -68,32 +72,47 @@ def get_network_from_architecture(
             ]
             if final_activation is not None:
                 layers = add_final_layer(final_activation, layers)
-
-            # layers[-2].weight.data.fill_(0.00)
             return nn.Sequential(*layers)
-
+    # Complex cases
     else:
         layers = []
-        for i, nb_neurons in enumerate(architecture):
+        for i, layer_description in enumerate(architecture):
+            if "LSTM" in layer_description:
+                recurrent = True
+                LSTM_description = re.search(r"\((.*?)\)", layer_description).group(1)
+                if "*" in LSTM_description:
+                    nb_neurons = int(LSTM_description.split("*")[0])
+                    nb_layers = int(LSTM_description.split("*")[1])
+                else:
+                    nb_neurons = int(LSTM_description)
+                    nb_layers = 1
+            else:
+                recurrent = False
+                nb_neurons = int(layer_description)
             if i == 0:
                 _input_shape = input_shape
-                _output_shape = int(nb_neurons)
-                layers.append(activation)
-                layers.append(nn.Linear(_input_shape, _output_shape))
-                layers.append(activation)
+                _output_shape = nb_neurons
             else:
-                _input_shape = int(architecture[i - 1])
-                _output_shape = int(nb_neurons)
+                _input_shape = last_layer_neurons
+                _output_shape = nb_neurons
+            last_layer_neurons = nb_neurons
+            if recurrent:
+                layers.append(
+                    nn.LSTM(
+                        _input_shape,
+                        _output_shape,
+                        nb_layers,
+                        batch_first=True,
+                    )
+                )
+            else:
                 layers.append(nn.Linear(_input_shape, _output_shape))
-                layers.append(activation)
-        _input_shape = architecture[-1]
+            layers.append(activation)
+        _input_shape = _output_shape
         _output_shape = output_shape
         layers.append(nn.Linear(_input_shape, _output_shape))
         if mode == "actor":
             layers.append(nn.Softmax(dim=-1))
-        # layers[-1].weight.data.fill_(0.00)
-        if final_activation is not None:
-            layers = add_final_layer(final_activation, layers)
         network = nn.Sequential(*layers)
         return network
 
