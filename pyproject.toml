@@ -4,7 +4,7 @@ version = "0.2.2"
 description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
 packages = [
-    { include = "src" },
+    { include = "deeprlyb" },
 ]
 
 [tool.poetry.dependencies]
