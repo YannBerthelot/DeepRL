@@ -26,11 +26,8 @@ jobs:
         python-version: "3.8.1"
     - name: Install dependencies
       run: |
-         curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
-         export PATH="$PATH:$HOME/.poetry/bin/" 
-         source $HOME/.poetry/env 
-         poetry install
-         source `poetry env info --path`/bin/activate
+        python -m pip install --upgrade pip poetry
+        python -m poetry install
         
     - name: Test with unittest
       run: |
