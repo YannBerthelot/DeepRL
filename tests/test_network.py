@@ -46,7 +46,7 @@ class TestNetworkUtils(unittest.TestCase):
             architecture=architecture,
             actor=actor,
         )
-        hiddens = network.init_hidden_states()
+        hiddens = network.initialize_hidden_states()
         # simulate passes
         for i in range(3):
             input = t(np.array([np.random.randint(10, size=state_dim)]))
