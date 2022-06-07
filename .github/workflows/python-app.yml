@@ -14,12 +14,6 @@ permissions:
   
 
 jobs:
-  before_script:
-    -
-    - 
-    - 
-    - 
-    - 
   build:
 
     runs-on: ubuntu-latest
