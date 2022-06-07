@@ -25,9 +25,9 @@ jobs:
         python-version: "3.8.1"
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
-        pip install -e .
+        pip install poetry
+        poetry install
         
     - name: Test with unittest
       run: |
-        python -m unittest tests/test_normalize.py
+        poetry run python -m unittest tests/test_normalize.py
