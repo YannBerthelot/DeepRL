@@ -4,10 +4,10 @@ import gym
 import wandb
 import numpy as np
 from tqdm import tqdm
-import wandb
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
+from typing import Dict, Tuple
 
 # Base class for Agent
 from deeprlyb.agents.agent import Agent
@@ -42,7 +42,7 @@ class A2C(Agent):
     def select_action(
         self,
         observation: np.array,
-        hidden: np.array,
+        hidden: Dict[int, torch.Tensor],
     ) -> int:
         """
         Select the action based on the current policy and the observation
@@ -69,19 +69,7 @@ class A2C(Agent):
         """
         return self.network.get_value(observation, hidden)
 
-    def train(self, env: gym.Env, nb_timestep: int) -> None:
-        """
-        Train the agent : Collect rollouts and update the policy network.
-
-
-        Args:
-            env (gym.Env): The Gym environment to train on
-            nb_episodes_per_epoch (int): Number of episodes per epoch. How much episode to run before updating the policy
-            nb_epoch (int): Number of epochs to train on.
-        """
-        # Early stopping
-        self.constant_reward_counter, self.old_reward_sum = 0, 0
-
+    def pre_train(self, env: gym.Env, nb_timestep: int) -> None:
         # Init training
         self.t, t_old, self.constant_reward_counter = 1, 0, 0
 
@@ -89,10 +77,8 @@ class A2C(Agent):
         if self.config["GLOBAL"].getfloat("learning_start") > 0:
             print("--- Pre-Training ---")
             t_pre_train = 1
-            pbar = tqdm(
-                total=self.config["GLOBAL"].getfloat("learning_start"), initial=1
-            )
-            while t_pre_train <= self.config["GLOBAL"].getfloat("learning_start"):
+            pbar = tqdm(total=nb_timestep, initial=1)
+            while t_pre_train <= nb_timestep:
                 pbar.update(t_pre_train - t_old)
                 t_old = t_pre_train
                 done, obs, rewards = False, env.reset(), []
@@ -108,6 +94,59 @@ class A2C(Agent):
                 f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
             )
             print(f"Reward scaler - std : {self.reward_scaler.std}")
+
+    def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
+        self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
+        print("--- Training ---")
+        t_old = 0
+        pbar = tqdm(total=nb_timestep, initial=1)
+
+        while self.t <= nb_timestep:
+            # tqdm stuff
+            pbar.update(self.t - t_old)
+            t_old, t_episode = self.t, 1
+
+            # actual episode
+            actions_taken = {action: 0 for action in range(self.action_shape)}
+            done, obs, rewards = False, env.reset(), []
+            actor_hidden = self.network.actor.initialize_hidden_states()
+            critic_hidden = self.network.critic.initialize_hidden_states()
+            reward_sum = 0
+            while not done:
+                action, next_actor_hidden, loss_params = self.select_action(
+                    obs, actor_hidden
+                )
+                value, critic_hidden = self.network.get_value(obs, critic_hidden)
+                next_obs, reward, done, _ = env.step(action)
+                next_obs, reward = self.scaling(
+                    next_obs, reward, fit=False, transform=True
+                )
+                next_critic_hidden = critic_hidden.copy()
+                next_value, critic_hidden = self.network.get_value(
+                    next_obs, critic_hidden
+                )
+                advantage = reward + next_value - value
+                actions_taken[int(action)] += 1
+                reward_sum += reward
+
+                self.network.update_policy(advantage, *loss_params, finished=True)
+                self.t, t_episode = self.t + 1, t_episode + 1
+                obs = next_obs
+                critic_hidden, actor_hidden = next_critic_hidden, next_actor_hidden
+
+    def train(self, env: gym.Env, nb_timestep: int) -> None:
+        """
+        Train the agent : Collect rollouts and update the policy network.
+
+
+        Args:
+            env (gym.Env): The Gym environment to train on
+            nb_episodes_per_epoch (int): Number of episodes per epoch. How much episode to run before updating the policy
+            nb_epoch (int): Number of epochs to train on.
+        """
+        # Early stopping
+        self.constant_reward_counter, self.old_reward_sum = 0, 0
+        self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
         print("--- Training ---")
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
@@ -130,12 +169,15 @@ class A2C(Agent):
                 next_obs, reward = self.scaling(
                     next_obs, reward, fit=False, transform=True
                 )
-                self.rollout.add(reward, done, *loss_params)
+                self.rollout.add(reward[0], done[0], *loss_params)
                 if self.rollout.full:
                     next_val, next_hidden = self.compute_value(next_obs, hidden)
                     self.rollout.update_advantages(next_val)
                     self._learn()
-                    self.rollout.reset()
+                    if self.rollout.done:
+                        self.rollout.reset()
+                    else:
+                        self.rollout.clean()
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs, hidden = next_obs, next_hidden
                 # if done:
@@ -172,7 +214,7 @@ class A2C(Agent):
         best_test_episode_reward = 0
         # Iterate over the episodes
         for episode in tqdm(range(nb_episodes)):
-            hidden = self.network.get_initial_states()
+            actor_hidden = self.network.actor.initialize_hidden_states()
             # Init episode
             done, obs, rewards_sum = False, env.reset(), 0
 
@@ -181,7 +223,7 @@ class A2C(Agent):
                 # Select the action using the current policy
                 if self.config["GLOBAL"].getboolean("scaling"):
                     obs = self.obs_scaler.transform(obs)
-                action, next_hidden, _ = self.select_action(obs, hidden)
+                action, next_actor_hidden, _ = self.select_action(obs, actor_hidden)
 
                 # Step the environment accordingly
                 next_obs, reward, done, _ = env.step(action)
@@ -194,7 +236,7 @@ class A2C(Agent):
                     env.render()
 
                 # Next step
-                obs, hidden = next_obs, next_hidden
+                obs, actor_hidden = next_obs, next_actor_hidden
 
             if rewards_sum > best_test_episode_reward:
                 best_test_episode_reward = rewards_sum
@@ -230,7 +272,7 @@ class A2C(Agent):
                 log_prob,
                 entropy,
                 kl_divergence,
-                finished=i == self.config["NETWORKS"].getint("buffer_size") - 1,
+                finished=True,
             )
 
 
@@ -238,22 +280,27 @@ class TorchA2C(BaseTorchAgent):
     def __init__(self, agent):
         super(TorchA2C, self).__init__(agent)
 
-        # Create the network architecture given the observation, action and config shapes
-        self.actorcritic = ActorCriticRecurrentNetworks(
+        self.actor = ActorCriticRecurrentNetworks(
             agent.obs_shape[0],
             agent.action_shape,
-            self.config["NETWORKS"].getint("hidden_size"),
-            self.config["NETWORKS"].getint("hidden_layers"),
-            self.config,
+            self.config["NETWORKS"]["actor_nn_architecture"],
+            actor=True,
         )
-        print(self.actorcritic)
 
-        if self.config["GLOBAL"]["logging"] == "wandb":
-            wandb.watch(self.actorcritic)
+        self.critic = ActorCriticRecurrentNetworks(
+            agent.obs_shape[0],
+            1,
+            self.config["NETWORKS"]["critic_nn_architecture"],
+            actor=False,
+        )
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
-        self.optimizer = torch.optim.Adam(
-            self.actorcritic.parameters(),
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor.parameters(),
+            lr=self.config["NETWORKS"].getfloat("learning_rate"),
+        )
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(),
             lr=self.config["NETWORKS"].getfloat("learning_rate"),
         )
 
@@ -276,61 +323,26 @@ class TorchA2C(BaseTorchAgent):
         self.advantages = []
         self.targets = []
 
-    def get_latent_observation(
-        self, observation: np.array, hidden: np.array
-    ) -> torch.Tensor:
-        observation = torch.FloatTensor(observation.reshape(1, -1)).to(self.device)
-        embedded_observation = self.actorcritic.forward(observation)
-
-        if self.config["NETWORKS"].getboolean("recurrent"):
-            new_embedded_observation, new_hidden = self.actorcritic.LSTM(
-                embedded_observation, hidden
-            )
-        else:
-            new_embedded_observation = embedded_observation
-            new_hidden = None
-
-        return embedded_observation, new_hidden
-
-    def select_action(self, observation: np.array, hidden: np.array) -> np.array:
-        """Select the action based on the observation and the current parametrized policy
-
-        Args:
-            observation (np.array): The current state observation
-
-        Returns:
-            np.array : The selected action(s)
-        """
-        embedded_observation, new_hidden = self.get_latent_observation(
-            observation, hidden
-        )
-        dist = self.actorcritic.actor(embedded_observation)
-        value = self.actorcritic.critic(embedded_observation)
-
+    def select_action(
+        self, observation: np.array, hidden: Dict[int, torch.Tensor]
+    ) -> np.array:
+        probs, new_hidden = self.actor(t(observation), hidden)
+        dist = torch.distributions.Categorical(probs=probs)
         action = dist.sample()
+
         log_prob = dist.log_prob(action.detach())
         entropy = dist.entropy()
+
         if self.old_dist is not None:
             KL_divergence = compute_KL_divergence(self.old_dist, dist)
         else:
             KL_divergence = 0
-        loss_params = (value, log_prob, entropy, KL_divergence)
-
-        if self.continuous:
-            if self.config["GLOBAL"]["law"] == "normal":
-                action = np.clip(
-                    action, self.env.action_space.low, self.env.action_space.high
-                )
-            elif self.config["GLOBAL"]["law"] == "beta":
-                action = (
-                    action * (self.env.action_space.high - self.env.action_space.low)
-                    + self.env.action_space.low
-                )
-            return action.detach().data.numpy()[0][0], new_hidden
-        else:
-            assert len(action) == 1, "Bug action dim is larger than 1"
-            action = action.flatten()[0]
-            return action.detach().data.numpy(), new_hidden, loss_params
+        action = action.flatten()[0]
+        return (
+            action.detach().data.numpy(),
+            new_hidden,
+            (log_prob, entropy, KL_divergence),
+        )
 
     def update_policy(
         self, advantage, log_prob, entropy, kl_divergence, finished=False
@@ -350,38 +362,34 @@ class TorchA2C(BaseTorchAgent):
         # For logging purposes
         torch.autograd.set_detect_anomaly(True)
         self.index += 1
-        # self.optimizer = optim.Adam(
-        #     self.actorcritic.parameters(),
-        #     lr=self.lr_scheduler.transform(self.index),
-        # )
-        # if self.config["NORMALIZE_ADVANTAGES"]:
-        #     advantages = torch.div(
-        #         torch.sub(advantages, advantages.mean()),
-        #         torch.add(advantages.std(), 1e-8),
-        #     )
+        if self.config["NETWORKS"].getboolean("normalize_advantages"):
+            print("wut")
+            advantages = torch.div(
+                torch.sub(advantages, advantages.mean()),
+                torch.add(advantages.std(), 1e-8),
+            )
 
         # Losses (be careful that all its components are torch tensors with grad on)
         entropy_loss = -entropy
         actor_loss = -(log_prob * advantage.detach())
         critic_loss = advantage.pow(2)
         kl_loss = -kl_divergence
-        loss = (
+        actor_loss = (
             actor_loss
-            + self.config["AGENT"].getfloat("value_factor") * critic_loss
             + self.config["AGENT"].getfloat("entropy_factor") * entropy_loss
             # + self.config["AGENT"].getfloat("KL_factor") * kl_loss
         )
-        self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-        try:
-            float(self.config["AGENT"]["gradient_clipping"])
-        except:
-            pass
-        else:
-            self.gradient_clipping()
-
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward(retain_graph=True)
+        self.gradient_clipping()  #
         if finished:
-            self.optimizer.step()
+            self.actor_optimizer.step()
+
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward(retain_graph=True)
+        # self.gradient_clipping()
+        if finished:
+            self.critic_optimizer.step()
 
         # KPIs
         # explained_variance = self.compute_explained_variance(
@@ -402,7 +410,6 @@ class TorchA2C(BaseTorchAgent):
                 )
                 self.writer.add_scalar("Train/policy loss", actor_loss, self.index)
                 self.writer.add_scalar("Train/critic loss", critic_loss, self.index)
-                self.writer.add_scalar("Train/total loss", loss, self.index)
                 # self.writer.add_scalar(
                 #     "Train/explained variance", explained_variance, self.index
                 # )
@@ -415,7 +422,6 @@ class TorchA2C(BaseTorchAgent):
                     "Train/entropy loss": -entropy_loss,
                     "Train/actor loss": actor_loss,
                     "Train/critic loss": critic_loss,
-                    "Train/total loss": loss,
                     # "Train/explained variance": explained_variance,
                     # "Train/KL divergence": KL_divergence,
                     "Train/learning rate": self.lr_scheduler.transform(self.index),
@@ -435,9 +441,11 @@ class TorchA2C(BaseTorchAgent):
         Returns:
             np.array: np.array representation of the action probabilities
         """
-        return self.actorcritic.actor(t(state)).detach().cpu().numpy()
+        return self.actor(t(state)).detach().cpu().numpy()
 
-    def get_value(self, state: np.array, hidden) -> np.array:
+    def get_value(
+        self, state: np.array, hidden: Dict[int, torch.Tensor]
+    ) -> Tuple[torch.Tensor, Dict[int, torch.Tensor]]:
         """
         Computes the state value for the given state s and for the current policy parameters theta.
         Same as forward method with a clearer name for teaching purposes, but as forward is a native method that needs to exist we keep both.
@@ -449,11 +457,8 @@ class TorchA2C(BaseTorchAgent):
         Returns:
             np.array: np.array representation of the action probabilities
         """
-        embedded_observation, new_hidden = self.get_latent_observation(state, hidden)
-        return (
-            self.actorcritic.critic(embedded_observation),
-            new_hidden,
-        )
+        value, new_hidden = self.critic(t(state), hidden)
+        return value, new_hidden
 
     def save(self, name: str = "model"):
         """
@@ -462,7 +467,10 @@ class TorchA2C(BaseTorchAgent):
         Args:
             name (str, optional): [Name of the model]. Defaults to "model".
         """
-        torch.save(self.actorcritic, f'{self.config["PATHS"]["model_path"]}/{name}.pth')
+        torch.save(self.actor, f'{self.config["PATHS"]["model_path"]}/{name}_actor.pth')
+        torch.save(
+            self.critic, f'{self.config["PATHS"]["model_path"]}/{name}_critic.pth'
+        )
 
     def load(self, name: str = "model"):
         """
@@ -472,39 +480,12 @@ class TorchA2C(BaseTorchAgent):
             name (str, optional): The model to be loaded (it should be in the "models" folder). Defaults to "model".
         """
         print("Loading")
-        self.actorcritic = torch.load(
-            f'{self.config["PATHS"]["model_path"]}/{name}.pth'
+        self.actor = torch.load(
+            f'{self.config["PATHS"]["model_path"]}/actor_{name}.pth'
         )
-        self.actorcritic.config = self.config
-
-        print(self.actorcritic)
-
-    def get_initial_states(self):
-        if self.config["AGENT"].getboolean("recurrent"):
-            h_0, c_0 = None, None
-
-            h_0 = torch.zeros(
-                (
-                    self.actorcritic._recurrent_layer.num_layers,
-                    1,
-                    self.actorcritic._recurrent_layer.hidden_size,
-                ),
-                dtype=torch.float,
-            )
-            h_0 = h_0.to(device=self.device)
-
-            c_0 = torch.zeros(
-                (
-                    self.actorcritic._recurrent_layer.num_layers,
-                    1,
-                    self.actorcritic._recurrent_layer.hidden_size,
-                ),
-                dtype=torch.float,
-            )
-            c_0 = c_0.to(device=self.device)
-            return (h_0, c_0)
-        else:
-            return None
+        self.critic = torch.load(
+            f'{self.config["PATHS"]["model_path"]}/critic_{name}.pth'
+        )
 
     def fit_transform(self, input):
         self.scaler.partial_fit(input)
@@ -512,7 +493,10 @@ class TorchA2C(BaseTorchAgent):
             return t(self.scaler.transform(input))
 
     def gradient_clipping(self):
-        nn.utils.clip_grad_norm_(
-            [p for g in self.optimizer.param_groups for p in g["params"]],
-            self.config["AGENT"].getfloat("gradient_clipping"),
-        )
+        clip_value = self.config["AGENT"].getfloat("gradient_clipping")
+        if clip_value is not None:
+            for optimizer in [self.actor_optimizer, self.critic_optimizer]:
+                nn.utils.clip_grad_norm_(
+                    [p for g in optimizer.param_groups for p in g["params"]],
+                    clip_value,
+                )
