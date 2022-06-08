@@ -22,11 +22,10 @@ jobs:
         python-version: "3.8.1"
     - name: Install dependencies
       run: |
-        pip install poetry
-        pip install setuptools --upgrade
-        pip install wheel
-        pip install ez_setup
-        poetry run pip install --upgrade setuptools==57.5.0
+       pip install poetry
+        poetry run pip install -U pip
+        poetry run pip install -U setuptools
+        poetry update
         poetry install
         
     - name: Test with unittest
