@@ -23,6 +23,8 @@ jobs:
     - name: Install dependencies
       run: |
         pip install poetry
+        pip install setuptools --upgrade
+        pip install --upgrade distribute 
         poetry run pip install -U pip
         poetry run pip install --upgrade distribute 
         poetry run pip install -U setuptools
