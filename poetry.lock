@@ -454,7 +454,7 @@ test = ["pytest (>=2.7.3)", "pytest-cov", "coveralls", "futures", "pytest-benchm
 
 [[package]]
 name = "protobuf"
-version = "4.21.1"
+version = "3.20.0"
 description = "Protocol Buffers"
 category = "main"
 optional = false
@@ -902,7 +902,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.9"
-content-hash = "84febb6b6f1db686c736b5095a09341110bac3622bcb3601bf30a3787c5b18da"
+content-hash = "d72ec29b27b564f177130cbf7cb40347727960ffe3c882ea18bd1caf08e99b6b"
 
 [metadata.files]
 absl-py = [
@@ -1304,8 +1304,8 @@ promise = [
     {file = "promise-2.3.tar.gz", hash = "sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0"},
 ]
 protobuf = [
-    {file = "protobuf-4.21.1-py2.py3-none-any.whl", hash = "sha256:b309fda192850ac4184ca1777aab9655564bc8d10a9cc98f10e1c8bf11295c22"},
-    {file = "protobuf-4.21.1.tar.gz", hash = "sha256:a33d5a6decf714ac2e5fd322d98beb34793d140f91ce4fbe8dc992a8d918dcc9"},
+    {file = "protobuf-3.20.0-py2.py3-none-any.whl", hash = "sha256:4eda68bd9e2a4879385e6b1ea528c976f59cd9728382005cc54c28bcce8db983"},
+    {file = "protobuf-3.20.0.tar.gz", hash = "sha256:2a6dbb1b5ba10f9d49e2e276538e59d7cd2f87f4726ec9bf2bb63ca2e5bdd22e"},
 ]
 psutil = [
     {file = "psutil-5.9.1-cp27-cp27m-manylinux2010_i686.whl", hash = "sha256:799759d809c31aab5fe4579e50addf84565e71c1dc9f1c31258f159ff70d3f87"},
