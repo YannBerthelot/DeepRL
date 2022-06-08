@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install poetry
-        pip uninstall setuptools
+        pip uninstall setuptools -y
         poetry run pip install -U pip
         poetry run pip install -U setuptools
         poetry update
