@@ -28,7 +28,7 @@ jobs:
         cache: 'poetry'
     - name: Install dependencies
       run: |
-        - run: poetry install
+        poetry install
     - name: Test with unittest
       run: |
         poetry run python -m unittest test/test_A2C.py
