@@ -30,6 +30,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install -e .
     - name: Linting
+      continue-on-error: true
       run: |
         pip install "black<23" pylint==v3.0.0a3 mypy==v0.902
         black --diff --check $(git ls-files '*.py')
