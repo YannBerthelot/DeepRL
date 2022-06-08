@@ -24,8 +24,8 @@ jobs:
       run: |
         pip install poetry
         poetry run pip install -U pip
-        poetry run pip install -U setuptools
         poetry run pip install --upgrade distribute 
+        poetry run pip install -U setuptools
         poetry install
         
     - name: Test with unittest
