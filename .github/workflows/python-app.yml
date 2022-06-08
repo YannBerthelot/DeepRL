@@ -23,8 +23,6 @@ jobs:
     - name: Install dependencies
       run: |
         pip install poetry
-        pip install --upgrade setuptools
-        apt-get install python-setuptools
         poetry run pip install -U pip
         poetry run pip install -U setuptools
         poetry update
