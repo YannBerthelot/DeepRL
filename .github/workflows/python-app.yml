@@ -23,8 +23,11 @@ jobs:
     - name: Install dependencies
       run: |
         pip install --upgrade pip
+        pip install --upgrade setuptools
         pip install poetry
         poetry install
+        poetry run pip list
+        poetry run python -m unittest tests/test_normalize.py
         
     - name: Test with unittest
       run: |
