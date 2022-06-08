@@ -22,9 +22,11 @@ jobs:
         python-version: "3.8.1"
     - name: Install dependencies
       run: |
-       pip install poetry
+        pip install poetry
+        pip install --upgrade setuptools
         poetry run pip install -U pip
         poetry run pip install -U setuptools
+        poetry run pip install -U distribute 
         poetry update
         poetry install
         
