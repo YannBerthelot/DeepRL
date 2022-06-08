@@ -9,8 +9,6 @@ import torch.nn as nn
 # Network creator tool
 from deeprlyb.network.utils import get_network_from_architecture, get_device
 
-# Numpy
-import numpy as np
 
 ZERO = 1e-7
 

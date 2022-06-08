@@ -1,8 +1,6 @@
 import unittest
 import numpy as np
 from deeprlyb.utils.buffer import RolloutBuffer
-from deeprlyb.network.utils import t
-import timeit
 import numpy as np
 
 

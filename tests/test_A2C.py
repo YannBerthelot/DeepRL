@@ -1,12 +1,8 @@
 import os
-import pdb
 import gym
 import unittest
-import torch
-import numpy as np
 from deeprlyb.agents.A2C import A2C
 from deeprlyb.utils.config import read_config
-import configparser
 
 
 class TestA2C(unittest.TestCase):

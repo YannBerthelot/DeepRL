@@ -1,5 +1,4 @@
 # For type hinting only
-from typing import List
 import gym
 
 # Base class for Agent

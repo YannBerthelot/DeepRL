@@ -9,7 +9,6 @@ from sklearn.preprocessing import MinMaxScaler
 from deeprlyb.utils.normalize import (
     SimpleMinMaxScaler,
     SimpleStandardizer,
-    RunningMeanStd,
 )
 
 

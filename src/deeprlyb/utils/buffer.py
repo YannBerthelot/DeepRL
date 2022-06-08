@@ -1,7 +1,5 @@
 import numpy as np
 import numpy.typing as npt
-from typing import Union
-from functools import reduce
 
 
 class RolloutBuffer:
