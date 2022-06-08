@@ -24,6 +24,6 @@ jobs:
         poetry run pip install -U setuptools
         poetry update
         poetry install
-        apt-get update
-        apt-get install --reinstall python-pkg-resources
+        poetry run apt-get update
+        poetry run apt-get install --reinstall python-pkg-resources
         poetry run python -m unittest tests/test_normalize.py
