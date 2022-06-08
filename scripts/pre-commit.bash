@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 echo "Running pre-commit hook"
+./scripts/create_requirements.bash
 ./scripts/linting.bash
 #./scripts/run-tests.bash
 
