@@ -26,7 +26,6 @@ jobs:
         pip install --upgrade setuptools
         poetry run pip install -U pip
         poetry run pip install -U setuptools
-        poetry run pip install -U distribute 
         poetry update
         poetry install
         
