@@ -3,7 +3,10 @@ name = "deeprlyb"
 version = "0.3.0"
 description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
-
+packages = [
+    { include = "deeprlyb", from = "src" },
+]
+include = ["tests/*"]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.9"
