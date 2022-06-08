@@ -24,7 +24,9 @@ jobs:
       run: |
         pip install poetry
         pip install setuptools --upgrade
+        pip install wheel
         pip install ez_setup
+        poetry run pip install setuptools
         poetry install
         
     - name: Test with unittest
