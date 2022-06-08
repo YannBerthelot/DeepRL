@@ -26,7 +26,7 @@ jobs:
         pip install setuptools --upgrade
         pip install wheel
         pip install ez_setup
-        poetry run pip install setuptools
+        poetry run pip install --upgrade setuptools==57.5.0
         poetry install
         
     - name: Test with unittest
