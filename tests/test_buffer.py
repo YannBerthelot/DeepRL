@@ -35,7 +35,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         gamma = 0.99
         G = RolloutBuffer.compute_n_step_return(rewards=rewards_list, gamma=gamma)
         self.assertAlmostEqual(
-            G, 1 + 0.99 * 2 + 0.99 ** 2 * 3 + 0.99 ** 3 * 4 + 0.99 ** 4 * 5
+            G, 1 + 0.99 * 2 + 0.99**2 * 3 + 0.99**3 * 4 + 0.99**4 * 5
         )
 
     def test_compute_advantages(self):

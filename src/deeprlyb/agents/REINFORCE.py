@@ -220,7 +220,7 @@ class REINFORCE(Agent):
         # Iterate over the episode starting from the end
         for i, step in enumerate(reversed(episode)):
             # Compute return using the return formula
-            G = step["reward"] + (gamma ** i) * G
+            G = step["reward"] + (gamma**i) * G
 
             # Add the return to the timestep dictionnary
             step["return"] = G

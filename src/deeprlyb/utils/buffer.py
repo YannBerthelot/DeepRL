@@ -94,7 +94,7 @@ class RolloutBuffer:
     def compute_next_return(
         last_return: float, R_0: float, R_N: float, gamma: float, n_steps: int
     ):
-        return ((last_return - R_0) / gamma) + ((gamma ** n_steps) * R_N)
+        return ((last_return - R_0) / gamma) + ((gamma**n_steps) * R_N)
 
     @staticmethod
     def compute_all_n_step_returns(
@@ -147,7 +147,7 @@ class RolloutBuffer:
         if n_steps > 0:
             return [
                 returns[i]
-                + (1 - dones[i]) * (gamma ** n_steps) * next_values[i]
+                + (1 - dones[i]) * (gamma**n_steps) * next_values[i]
                 - values[i]
                 for i in range(len(values) - n_steps + 1)
             ]
@@ -303,7 +303,7 @@ class RolloutBufferLambda:
     def compute_next_return(
         last_return: float, R_0: float, R_N: float, gamma: float, n_steps: int
     ):
-        return ((last_return - R_0) / gamma) + ((gamma ** n_steps) * R_N)
+        return ((last_return - R_0) / gamma) + ((gamma**n_steps) * R_N)
 
     @staticmethod
     def compute_all_n_step_returns(
@@ -356,7 +356,7 @@ class RolloutBufferLambda:
         if n_steps > 0:
             return [
                 returns[i]
-                + (1 - dones[i]) * (gamma ** n_steps) * next_values[i]
+                + (1 - dones[i]) * (gamma**n_steps) * next_values[i]
                 - values[i]
                 for i in range(len(values) - n_steps + 1)
             ]
