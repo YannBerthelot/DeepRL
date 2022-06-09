@@ -173,9 +173,16 @@ class Agent:
     def train_logging(self, artifact: wandb.Artifact) -> None:
         os.makedirs("data", exist_ok=True)
         if self.config["GLOBAL"]["logging"] == "wandb":
-            artifact = wandb.Artifact(f"{self.comment}_model", type="model")
+            artifact = wandb.Artifact(f"{self.comment}_model_actor", type="model")
             artifact.add_file(
-                f'{self.config["PATHS"]["model_path"]}/{self.comment}_best.pth'
+                f'{self.config["PATHS"]["model_path"]}/{self.comment}_best_actor.pth'
+            )
+            # Save the artifact version to W&B and mark it as the output of this run
+            self.run.log_artifact(artifact)
+
+            artifact = wandb.Artifact(f"{self.comment}_model_critic", type="model")
+            artifact.add_file(
+                f'{self.config["PATHS"]["model_path"]}/{self.comment}_best_critic.pth'
             )
             # Save the artifact version to W&B and mark it as the output of this run
             self.run.log_artifact(artifact)

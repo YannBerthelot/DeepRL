@@ -72,7 +72,8 @@ class A2C(Agent):
     def pre_train(self, env: gym.Env, nb_timestep: int) -> None:
         # Init training
         self.t, t_old, self.constant_reward_counter = 1, 0, 0
-
+        actor_hidden = self.network.actor.initialize_hidden_states()
+        critic_hidden = self.network.critic.initialize_hidden_states()
         # Pre-Training
         if self.config["GLOBAL"].getfloat("learning_start") > 0:
             print("--- Pre-Training ---")
@@ -83,6 +84,10 @@ class A2C(Agent):
                 t_old = t_pre_train
                 done, obs, rewards = False, env.reset(), []
                 while not done:
+                    action, actor_hidden, loss_params = self.select_action(
+                        obs, actor_hidden
+                    )
+                    value, critic_hidden = self.network.get_value(obs, critic_hidden)
                     action = self.env.action_space.sample()
                     next_obs, reward, done, _ = env.step(action)
                     next_obs, reward = self.scaling(
@@ -94,9 +99,12 @@ class A2C(Agent):
                 f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
             )
             print(f"Reward scaler - std : {self.reward_scaler.std}")
+        return actor_hidden, critic_hidden
 
     def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
-        self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
+        actor_hidden, critic_hidden = self.pre_train(
+            env, self.config["GLOBAL"].getfloat("learning_start")
+        )
         self.constant_reward_counter, self.old_reward_sum = 0, 0
         print("--- Training ---")
         t_old = 0
@@ -110,8 +118,7 @@ class A2C(Agent):
             # actual episode
             actions_taken = {action: 0 for action in range(self.action_shape)}
             done, obs, rewards = False, env.reset(), []
-            actor_hidden = self.network.actor.initialize_hidden_states()
-            critic_hidden = self.network.critic.initialize_hidden_states()
+
             reward_sum = 0
             while not done:
                 action, next_actor_hidden, loss_params = self.select_action(
