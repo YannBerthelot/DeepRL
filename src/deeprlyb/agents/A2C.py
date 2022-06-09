@@ -134,6 +134,16 @@ class A2C(Agent):
                 obs = next_obs
                 critic_hidden, actor_hidden = next_critic_hidden, next_actor_hidden
 
+            artifact = self.save_if_best(reward_sum)
+            if self.early_stopping(reward_sum):
+                break
+
+            self.old_reward_sum, self.episode = reward_sum, self.episode + 1
+            self.episode_logging(rewards, reward_sum, actions_taken)
+
+        pbar.close()
+        self.train_logging(artifact)
+
     def train(self, env: gym.Env, nb_timestep: int) -> None:
         """
         Train the agent : Collect rollouts and update the policy network.
