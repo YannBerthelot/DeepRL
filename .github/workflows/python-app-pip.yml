@@ -41,6 +41,7 @@ jobs:
         python -m unittest tests/*.py
     - name: Build
       run: |
+        pip install build
         python -m build
     - name: Publish package to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
