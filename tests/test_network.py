@@ -6,7 +6,7 @@ from deeprlyb.network.network import ActorCriticRecurrentNetworks
 
 
 class TestNetworkUtils(unittest.TestCase):
-    def test_get_network(self):
+    def test_get_network(self) -> None:
         input_shape = 16
         output_shape = 4
         # Test different architectures to assure that LSTM and multi layer LSTM works
@@ -29,7 +29,7 @@ class TestNetworkUtils(unittest.TestCase):
 
             self.assertEqual(int(len(network) / 2) - 1, len(parsed_archi))
 
-    def test_init_and_forward(self):
+    def test_init_and_forward(self) -> None:
         state_dim = 16
         action_dim = 4
         architecture = "[256,LSTM(128),64]"

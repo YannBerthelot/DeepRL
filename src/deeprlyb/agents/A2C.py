@@ -274,7 +274,7 @@ class A2C(Agent):
                 run_name="test",
             )
 
-    def _learn(self):
+    def _learn(self) -> None:
         for i, steps in enumerate(self.rollout.get_steps_list()):
             advantage, log_prob, entropy, kl_divergence = steps
             self.network.update_policy(
@@ -287,7 +287,7 @@ class A2C(Agent):
 
 
 class TorchA2C(BaseTorchAgent):
-    def __init__(self, agent):
+    def __init__(self, agent) -> None:
         super(TorchA2C, self).__init__(agent)
 
         self.actor = ActorCriticRecurrentNetworks(
@@ -334,8 +334,8 @@ class TorchA2C(BaseTorchAgent):
         self.targets = []
 
     def select_action(
-        self, observation: np.array, hidden: Dict[int, torch.Tensor]
-    ) -> np.array:
+        self, observation: np.ndarray, hidden: Dict[int, torch.Tensor]
+    ) -> np.ndarray:
         probs, new_hidden = self.actor(t(observation), hidden)
         dist = torch.distributions.Categorical(probs=probs)
         action = dist.sample()
@@ -355,7 +355,12 @@ class TorchA2C(BaseTorchAgent):
         )
 
     def update_policy(
-        self, advantage, log_prob, entropy, kl_divergence, finished=False
+        self,
+        advantage: float,
+        log_prob: float,
+        entropy: float,
+        kl_divergence: float,
+        finished: bool = False,
     ) -> None:
         """
         Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
@@ -373,7 +378,6 @@ class TorchA2C(BaseTorchAgent):
         torch.autograd.set_detect_anomaly(True)
         self.index += 1
         if self.config["NETWORKS"].getboolean("normalize_advantages"):
-            print("wut")
             advantages = torch.div(
                 torch.sub(advantages, advantages.mean()),
                 torch.add(advantages.std(), 1e-8),
@@ -439,7 +443,7 @@ class TorchA2C(BaseTorchAgent):
                 commit=False,
             )
 
-    def get_action_probabilities(self, state: np.array) -> np.array:
+    def get_action_probabilities(self, state: np.ndarray) -> np.ndarray:
         """
         Computes the policy pi(s, theta) for the given state s and for the current policy parameters theta.
         Same as forward method with a clearer name for teaching purposes, but as forward is a native method that needs to exist we keep both.
@@ -454,7 +458,7 @@ class TorchA2C(BaseTorchAgent):
         return self.actor(t(state)).detach().cpu().numpy()
 
     def get_value(
-        self, state: np.array, hidden: Dict[int, torch.Tensor]
+        self, state: np.ndarray, hidden: Dict[int, torch.Tensor]
     ) -> Tuple[torch.Tensor, Dict[int, torch.Tensor]]:
         """
         Computes the state value for the given state s and for the current policy parameters theta.
@@ -470,7 +474,7 @@ class TorchA2C(BaseTorchAgent):
         value, new_hidden = self.critic(t(state), hidden)
         return value, new_hidden
 
-    def save(self, name: str = "model"):
+    def save(self, name: str = "model") -> None:
         """
         Save the current model
 
@@ -482,7 +486,7 @@ class TorchA2C(BaseTorchAgent):
             self.critic, f'{self.config["PATHS"]["model_path"]}/{name}_critic.pth'
         )
 
-    def load(self, name: str = "model"):
+    def load(self, name: str = "model") -> None:
         """
         Load the designated model
 
@@ -497,12 +501,12 @@ class TorchA2C(BaseTorchAgent):
             f'{self.config["PATHS"]["model_path"]}/critic_{name}.pth'
         )
 
-    def fit_transform(self, input):
+    def fit_transform(self, input) -> torch.Tensor:
         self.scaler.partial_fit(input)
         if self.index > 2:
             return t(self.scaler.transform(input))
 
-    def gradient_clipping(self):
+    def gradient_clipping(self) -> None:
         clip_value = self.config["AGENT"].getfloat("gradient_clipping")
         if clip_value is not None:
             for optimizer in [self.actor_optimizer, self.critic_optimizer]:

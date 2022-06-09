@@ -120,11 +120,13 @@ class SimpleStandardizer:
         else:
             raise TypeError(f"type of transform input {type(value)} not handled atm")
 
-    def save(self, path: Union[str, pathlib.Path] = ".", name: str = "standardizer"):
+    def save(
+        self, path: Union[str, pathlib.Path] = ".", name: str = "standardizer"
+    ) -> None:
         with open(os.path.join(path, name + ".pkl"), "wb") as file:
             pickle.dump(self, file)
 
-    def load(self, path: Union[str, pathlib.Path], name: str = "standardizer"):
+    def load(self, path: Union[str, pathlib.Path], name: str = "standardizer") -> None:
         with open(os.path.join(path, name + ".pkl"), "rb") as file:
             save = pickle.load(file)
             self.std = save.std
@@ -135,91 +137,3 @@ class SimpleStandardizer:
             self.shift_mean = save.shift_mean
             self.clip = save.clip
             self.clipping_range = save.clipping_range
-
-
-# taken from https://github.com/openai/baselines/blob/master/baselines/common/vec_env/vec_normalize.py
-class RunningMeanStd:
-    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
-    def __init__(self, epsilon=1e-4, shape=()):
-        self.mean = np.zeros(shape, "float64")
-        self.var = np.ones(shape, "float64")
-        self.count = epsilon
-        self.epsilon = epsilon
-
-    def partial_fit(self, x):
-        batch_mean = np.mean(x, axis=0)
-        batch_var = np.var(x, axis=0)
-        batch_count = x.shape[0]
-        self.update_from_moments(batch_mean, batch_var, batch_count)
-
-    def update_from_moments(self, batch_mean, batch_var, batch_count):
-        self.mean, self.var, self.count = update_mean_var_count_from_moments(
-            self.mean, self.var, self.count, batch_mean, batch_var, batch_count
-        )
-
-    def transform(self, obs):
-        self.partial_fit(obs)
-
-        return (obs - self.mean) / np.sqrt(self.var + self.epsilon)
-
-    def show(self):
-        print(
-            f"Mean: {self.mean}, Standard-deviation: {np.sqrt(self.var + self.epsilon)}"
-        )
-
-
-def update_mean_var_count_from_moments(
-    mean, var, count, batch_mean, batch_var, batch_count
-):
-    delta = batch_mean - mean
-    tot_count = count + batch_count
-
-    new_mean = mean + delta * batch_count / tot_count
-    m_a = var * count
-    m_b = batch_var * batch_count
-    M2 = m_a + m_b + np.square(delta) * count * batch_count / tot_count
-    new_var = M2 / tot_count
-    new_count = tot_count
-
-    return new_mean, new_var, new_count
-
-
-class NormalizeObservation:
-    def __init__(
-        self,
-        env,
-        epsilon=1e-8,
-    ):
-        super().__init__(env)
-        self.num_envs = getattr(env, "num_envs", 1)
-        self.is_vector_env = getattr(env, "is_vector_env", False)
-        if self.is_vector_env:
-            self.obs_rms = RunningMeanStd(shape=self.single_observation_space.shape)
-        else:
-            self.obs_rms = RunningMeanStd(shape=self.observation_space.shape)
-        self.epsilon = epsilon
-
-    def normalize(self, obs):
-        self.obs_rms.update(obs)
-        return (obs - self.obs_rms.mean) / np.sqrt(self.obs_rms.var + self.epsilon)
-
-
-class SimpleMinMaxScaler:
-    def __init__(self, maxs: list, mins: list, feature_range: tuple = (0, 1)) -> None:
-        self.max = np.array(maxs)
-        self.min = np.array(mins)
-        self.feature_range = feature_range
-        if feature_range[0] == feature_range[1]:
-            raise ValueError(
-                f"Feature range values must be different ({feature_range[0]} and {feature_range[1]})"
-            )
-        for i in range(len(self.max)):
-            if self.max[i] <= self.min[i]:
-                raise ValueError(
-                    f"Mins must be inferior and different from max : Max {i} = {self.max[i]}, Min {i}={self.min[i]}"
-                )
-
-    def transform(self, x: np.ndarray) -> np.ndarray:
-        return ((x - self.min) / (self.max - self.min)) * (
-            self.feature_range[1] - self.feature_range[0]
-        ) + self.feature_range[0]

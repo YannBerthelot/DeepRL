@@ -5,11 +5,10 @@ from datetime import date
 import gym
 import wandb
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
 from deeprlyb.utils.normalize import (
-    SimpleMinMaxScaler,
     SimpleStandardizer,
 )
+from typing import Tuple
 
 
 class Agent:
@@ -28,15 +27,15 @@ class Agent:
         self.best_episode_reward, self.episode = -np.inf, 1
 
     @property
-    def config(self):
+    def config(self) -> dict:
         return self._config
 
     @property
-    def env(self):
+    def env(self) -> gym.Env:
         return self._env
 
     @env.setter
-    def env(self, new_env: gym.Env):
+    def env(self, new_env: gym.Env) -> None:
         if (new_env.observation_space == self._env.observation_space) & (
             new_env.action_space == self._env.action_space
         ):
@@ -45,11 +44,11 @@ class Agent:
             raise ValueError("Environment spaces don't match. Check new environment.")
 
     @property
-    def obs_shape(self):
+    def obs_shape(self) -> tuple:
         return self.env.observation_space.shape
 
     @property
-    def action_shape(self):
+    def action_shape(self) -> int:
         return (
             self.env.action_space.shape[0]
             if self.config["GLOBAL"].getboolean("continuous")
@@ -57,18 +56,18 @@ class Agent:
         )
 
     @abstractmethod
-    def select_action(self, observation):
+    def select_action(self, observation) -> NotImplementedError:
         raise NotImplementedError
 
     @abstractmethod
-    def train(self):
+    def train(self) -> NotImplementedError:
         raise NotImplementedError
 
     @abstractmethod
     def test(self, env: gym.Env, nb_episodes: int, render: bool = False) -> None:
         raise NotImplementedError
 
-    def save(self, name: str = "model"):
+    def save(self, name: str = "model") -> None:
         """
         Wrapper method for saving the network weights.
 
@@ -77,7 +76,7 @@ class Agent:
         """
         self.network.save(name)
 
-    def load(self, name: str):
+    def load(self, name: str) -> None:
         """
         Wrapper method for loading the network weights.
 
@@ -86,7 +85,7 @@ class Agent:
         """
         self.network.load(name)
 
-    def save_if_best(self, reward_sum):
+    def save_if_best(self, reward_sum: float) -> wandb.Artifact:
         artifact = None
         if reward_sum >= self.best_episode_reward:
             self.best_episode_reward = reward_sum
@@ -97,7 +96,7 @@ class Agent:
             self.save(f"{self.comment}_best")
         return artifact
 
-    def early_stopping(self, reward_sum):
+    def early_stopping(self, reward_sum: float) -> bool:
         if reward_sum == self.old_reward_sum:
             self.constant_reward_counter += 1
             if self.constant_reward_counter > self.config["GLOBAL"].getint(
@@ -111,7 +110,7 @@ class Agent:
             self.constant_reward_counter = 0
         return False
 
-    def episode_logging(self, rewards: list, reward_sum: float, actions_taken: dict):
+    def episode_logging(self, reward_sum: float, actions_taken: dict) -> None:
         n_actions = sum(actions_taken.values())
         action_frequencies = {
             action: n / n_actions for action, n in actions_taken.items()
@@ -138,7 +137,9 @@ class Agent:
                 "Reward/Episode_sum_of_rewards", reward_sum, self.episode
             )
 
-    def scaling(self, obs, reward, fit=True, transform=True):
+    def scaling(
+        self, obs: np.ndarray, reward: float, fit: bool = True, transform: bool = True
+    ) -> Tuple[np.ndarray, float]:
         # Scaling
         if self.config["GLOBAL"].getboolean("scaling"):
             if fit:
@@ -149,22 +150,19 @@ class Agent:
                 obs = self.obs_scaler.transform(obs)
         return obs, reward
 
-    def create_dirs(self):
+    def create_dirs(self) -> None:
         today = date.today().strftime("%d-%m-%Y")
         os.makedirs(self.config["PATHS"]["model_path"], exist_ok=True)
         return f'{self.config["PATHS"]["tensorboard_path"]}/{self.config["GLOBAL"]["environment"]}/{today}/{self.comment}'
 
-    def get_scalers(self):
+    def get_scalers(
+        self,
+    ) -> Tuple[SimpleStandardizer, SimpleStandardizer, SimpleStandardizer]:
         if self.config["GLOBAL"].getboolean("SCALING"):
             if self.config["GLOBAL"]["scaling_method"] == "standardize":
                 obs_scaler = SimpleStandardizer(clip=True)
                 reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)
                 target_scaler = SimpleStandardizer(shift_mean=False, clip=False)
-            elif self.config["GLOBAL"]["scaling_method"] == "normalize":
-                obs_scaler = MinMaxScaler(feature_range=(-1, 1))
-                reward_scaler = SimpleMinMaxScaler(
-                    maxs=[100], mins=[-100], feature_range=(-1, 1)
-                )
         else:
             self.config["GLOBAL"]["learning_start"] = "0"
             obs_scaler = None
@@ -172,7 +170,7 @@ class Agent:
             target_scaler = None
         return obs_scaler, reward_scaler, target_scaler
 
-    def train_logging(self, artifact):
+    def train_logging(self, artifact: wandb.Artifact) -> None:
         os.makedirs("data", exist_ok=True)
         if self.config["GLOBAL"]["logging"] == "wandb":
             artifact = wandb.Artifact(f"{self.comment}_model", type="model")

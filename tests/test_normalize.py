@@ -7,13 +7,13 @@ from deeprlyb.network.utils import t
 
 
 class TestSimpleStandardizer(unittest.TestCase):
-    def test_init(self):
+    def test_init(self) -> None:
         with self.assertRaises(ValueError):
             SimpleStandardizer(clip=True, clipping_range=(5, -1e3))
         with self.assertRaises(ValueError):
             SimpleStandardizer(clip=True, clipping_range=(1, 1))
 
-    def test_partial_fit(self):
+    def test_partial_fit(self) -> None:
         # Non-zero std
         standardizer = SimpleStandardizer(shift_mean=True)
         samples = np.array([np.random.randint(10, size=5) for i in range(100)])
@@ -38,7 +38,7 @@ class TestSimpleStandardizer(unittest.TestCase):
             standardizer.partial_fit(np.ones(4))
             standardizer.partial_fit(np.ones(3))
 
-    def test_transform(self):
+    def test_transform(self) -> None:
         with self.assertRaises(TypeError):
             standardizer = SimpleStandardizer(shift_mean=True)
             standardizer.transform(np.ones(4))
@@ -50,7 +50,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         self.assertTrue(np.allclose(sample, result))
         self.assertIsInstance(result, np.ndarray)
 
-    def test_pytorch_transform(self):
+    def test_pytorch_transform(self) -> None:
         with self.assertRaises(TypeError):
             standardizer = SimpleStandardizer(shift_mean=True)
             standardizer.transform(t(np.ones(4)))
@@ -62,7 +62,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         self.assertTrue(np.allclose(sample, result))
         self.assertIsInstance(result, torch.Tensor)
 
-    def test_saving(self):
+    def test_saving(self) -> None:
         if os.path.exists("./standardizer.pkl"):
             os.remove("./standardizer.pkl")
         standardizer = SimpleStandardizer()
@@ -70,7 +70,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         self.assertTrue(os.path.exists("./standardizer.pkl"))
         os.remove("./standardizer.pkl")
 
-    def test_loading(self):
+    def test_loading(self) -> None:
         standardizer = SimpleStandardizer()
         samples = np.array([np.random.randint(10, size=5) for i in range(100)])
         for sample in samples:

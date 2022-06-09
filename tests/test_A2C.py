@@ -6,14 +6,14 @@ from deeprlyb.utils.config import read_config
 
 
 class TestA2C(unittest.TestCase):
-    def test_init(self):
+    def test_init(self) -> None:
         env = gym.make("CartPole-v1")
         dir = os.path.dirname(__file__)
         config_file = os.path.join(dir, "config.ini")
         config = read_config(config_file)
         agent = A2C(env, config)
 
-    def test_networks(self):
+    def test_networks(self) -> None:
         env = gym.make("CartPole-v1")
         dir = os.path.dirname(__file__)
         config_file = os.path.join(dir, "config.ini")
@@ -41,7 +41,7 @@ class TestA2C(unittest.TestCase):
             if done:
                 break
 
-    def test_update(self):
+    def test_update(self) -> None:
         env = gym.make("CartPole-v1")
         dir = os.path.dirname(__file__)
         config_file = os.path.join(dir, "config.ini")
@@ -61,7 +61,7 @@ class TestA2C(unittest.TestCase):
             if done:
                 break
 
-    def test_train_test(self):
+    def test_train_test(self) -> None:
         env = gym.make("CartPole-v1")
         dir = os.path.dirname(__file__)
         config_file = os.path.join(dir, "config.ini")
