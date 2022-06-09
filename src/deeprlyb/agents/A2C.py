@@ -97,6 +97,7 @@ class A2C(Agent):
 
     def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
         self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
+        self.constant_reward_counter, self.old_reward_sum = 0, 0
         print("--- Training ---")
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
