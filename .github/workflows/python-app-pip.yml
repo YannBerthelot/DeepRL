@@ -42,7 +42,8 @@ jobs:
     - name: Build
       run: |
         pip install build
-        python -m build
+        pip install poetry
+        poetry build
     - name: Publish package to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
