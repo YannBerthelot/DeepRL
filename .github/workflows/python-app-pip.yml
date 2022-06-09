@@ -27,6 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install -e .
     - name: Linting
@@ -42,6 +43,7 @@ jobs:
     - name: Build
       run: |
         pip install build
+        pip install -U setuptools
         python -m build
     - name: Publish package to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
@@ -49,3 +51,4 @@ jobs:
         user: __token__
         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
         repository_url: https://test.pypi.org/legacy/
+        verify_metadata: false
