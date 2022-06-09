@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "deeprlyb"
-version = "0.4.0"
+version = "0.4.2"
 description = ""
 authors = ["YANN BERTHELOT <yann.berthelot@capgemini.com>"]
 packages = [

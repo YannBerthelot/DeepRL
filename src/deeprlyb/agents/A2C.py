@@ -123,9 +123,10 @@ class A2C(Agent):
                     next_obs, reward, fit=False, transform=True
                 )
                 next_critic_hidden = critic_hidden.copy()
-                next_value, critic_hidden = self.network.get_value(
+                next_value, next_next_critic_hidden = self.network.get_value(
                     next_obs, critic_hidden
                 )
+
                 advantage = reward + next_value - value
                 actions_taken[int(action)] += 1
                 reward_sum += reward
@@ -133,7 +134,10 @@ class A2C(Agent):
                 self.network.update_policy(advantage, *loss_params, finished=True)
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs = next_obs
-                critic_hidden, actor_hidden = next_critic_hidden, next_actor_hidden
+                next_value, next_next_critic_hidden = self.network.get_value(
+                    next_obs, next_critic_hidden
+                )
+                critic_hidden, actor_hidden = next_next_critic_hidden, next_actor_hidden
 
             artifact = self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
@@ -395,16 +399,16 @@ class TorchA2C(BaseTorchAgent):
             # + self.config["AGENT"].getfloat("KL_factor") * kl_loss
         )
         self.actor_optimizer.zero_grad()
-        actor_loss.backward(retain_graph=True)
+        actor_loss.backward(retain_graph=False)
         self.gradient_clipping()  #
-        if finished:
-            self.actor_optimizer.step()
+        # if finished:
+        self.actor_optimizer.step()
 
         self.critic_optimizer.zero_grad()
-        critic_loss.backward(retain_graph=True)
-        # self.gradient_clipping()
-        if finished:
-            self.critic_optimizer.step()
+        critic_loss.backward(retain_graph=False)
+        self.gradient_clipping()
+        # if finished:
+        self.critic_optimizer.step()
 
         # KPIs
         # explained_variance = self.compute_explained_variance(
@@ -496,10 +500,10 @@ class TorchA2C(BaseTorchAgent):
         """
         print("Loading")
         self.actor = torch.load(
-            f'{self.config["PATHS"]["model_path"]}/actor_{name}.pth'
+            f'{self.config["PATHS"]["model_path"]}/{name}_actor.pth'
         )
         self.critic = torch.load(
-            f'{self.config["PATHS"]["model_path"]}/critic_{name}.pth'
+            f'{self.config["PATHS"]["model_path"]}/{name}_critic.pth'
         )
 
     def fit_transform(self, input) -> torch.Tensor:
