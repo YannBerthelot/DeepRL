@@ -140,7 +140,7 @@ class A2C(Agent):
                 break
 
             self.old_reward_sum, self.episode = reward_sum, self.episode + 1
-            self.episode_logging(rewards, reward_sum, actions_taken)
+            self.episode_logging(reward_sum, actions_taken)
 
         pbar.close()
         self.train_logging(artifact)
