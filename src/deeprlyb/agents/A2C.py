@@ -118,6 +118,7 @@ class A2C(Agent):
                 )
                 value, critic_hidden = self.network.get_value(obs, critic_hidden)
                 next_obs, reward, done, _ = env.step(action)
+                reward_sum += reward
                 next_obs, reward = self.scaling(
                     next_obs, reward, fit=False, transform=True
                 )
@@ -127,7 +128,6 @@ class A2C(Agent):
                 )
                 advantage = reward + next_value - value
                 actions_taken[int(action)] += 1
-                reward_sum += reward
 
                 self.network.update_policy(advantage, *loss_params, finished=True)
                 self.t, t_episode = self.t + 1, t_episode + 1
