@@ -16,7 +16,7 @@ if __name__ == "__main__":
             run = wandb.init(
                 project="Debugging",
                 entity="yann-berthelot",
-                name=f'{config["name"]} {experiment}/{config["GLOBAL"]["n_experiments"]}',
+                name=f'{experiment}/{config["GLOBAL"].getint("n_experiments")}',
                 reinit=True,
                 config=config,
             )
@@ -24,7 +24,7 @@ if __name__ == "__main__":
             run = None
         comment = f"config_{experiment}"
         agent = A2C(env, config=config, comment=comment, run=run)
-        agent.train(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
+        agent.train_TD0(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
         agent.load(f"{comment}_best")
         agent.test(
             env,

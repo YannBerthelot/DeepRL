@@ -72,7 +72,8 @@ class A2C(Agent):
     def pre_train(self, env: gym.Env, nb_timestep: int) -> None:
         # Init training
         self.t, t_old, self.constant_reward_counter = 1, 0, 0
-
+        actor_hidden = self.network.actor.initialize_hidden_states()
+        critic_hidden = self.network.critic.initialize_hidden_states()
         # Pre-Training
         if self.config["GLOBAL"].getfloat("learning_start") > 0:
             print("--- Pre-Training ---")
@@ -83,6 +84,10 @@ class A2C(Agent):
                 t_old = t_pre_train
                 done, obs, rewards = False, env.reset(), []
                 while not done:
+                    action, actor_hidden, loss_params = self.select_action(
+                        obs, actor_hidden
+                    )
+                    value, critic_hidden = self.network.get_value(obs, critic_hidden)
                     action = self.env.action_space.sample()
                     next_obs, reward, done, _ = env.step(action)
                     next_obs, reward = self.scaling(
@@ -94,9 +99,13 @@ class A2C(Agent):
                 f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
             )
             print(f"Reward scaler - std : {self.reward_scaler.std}")
+        return actor_hidden, critic_hidden
 
     def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
-        self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
+        actor_hidden, critic_hidden = self.pre_train(
+            env, self.config["GLOBAL"].getfloat("learning_start")
+        )
+        self.constant_reward_counter, self.old_reward_sum = 0, 0
         print("--- Training ---")
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
@@ -109,8 +118,7 @@ class A2C(Agent):
             # actual episode
             actions_taken = {action: 0 for action in range(self.action_shape)}
             done, obs, rewards = False, env.reset(), []
-            actor_hidden = self.network.actor.initialize_hidden_states()
-            critic_hidden = self.network.critic.initialize_hidden_states()
+
             reward_sum = 0
             while not done:
                 action, next_actor_hidden, loss_params = self.select_action(
@@ -123,16 +131,30 @@ class A2C(Agent):
                     next_obs, reward, fit=False, transform=True
                 )
                 next_critic_hidden = critic_hidden.copy()
-                next_value, critic_hidden = self.network.get_value(
+                next_value, next_next_critic_hidden = self.network.get_value(
                     next_obs, critic_hidden
                 )
+
                 advantage = reward + next_value - value
                 actions_taken[int(action)] += 1
 
                 self.network.update_policy(advantage, *loss_params, finished=True)
                 self.t, t_episode = self.t + 1, t_episode + 1
                 obs = next_obs
-                critic_hidden, actor_hidden = next_critic_hidden, next_actor_hidden
+                next_value, next_next_critic_hidden = self.network.get_value(
+                    next_obs, next_critic_hidden
+                )
+                critic_hidden, actor_hidden = next_next_critic_hidden, next_actor_hidden
+
+            artifact = self.save_if_best(reward_sum)
+            if self.early_stopping(reward_sum):
+                break
+
+            self.old_reward_sum, self.episode = reward_sum, self.episode + 1
+            self.episode_logging(reward_sum, actions_taken)
+
+        pbar.close()
+        self.train_logging(artifact)
 
     def train(self, env: gym.Env, nb_timestep: int) -> None:
         """
@@ -264,7 +286,7 @@ class A2C(Agent):
                 run_name="test",
             )
 
-    def _learn(self):
+    def _learn(self) -> None:
         for i, steps in enumerate(self.rollout.get_steps_list()):
             advantage, log_prob, entropy, kl_divergence = steps
             self.network.update_policy(
@@ -277,7 +299,7 @@ class A2C(Agent):
 
 
 class TorchA2C(BaseTorchAgent):
-    def __init__(self, agent):
+    def __init__(self, agent) -> None:
         super(TorchA2C, self).__init__(agent)
 
         self.actor = ActorCriticRecurrentNetworks(
@@ -324,8 +346,8 @@ class TorchA2C(BaseTorchAgent):
         self.targets = []
 
     def select_action(
-        self, observation: np.array, hidden: Dict[int, torch.Tensor]
-    ) -> np.array:
+        self, observation: np.ndarray, hidden: Dict[int, torch.Tensor]
+    ) -> np.ndarray:
         probs, new_hidden = self.actor(t(observation), hidden)
         dist = torch.distributions.Categorical(probs=probs)
         action = dist.sample()
@@ -345,7 +367,12 @@ class TorchA2C(BaseTorchAgent):
         )
 
     def update_policy(
-        self, advantage, log_prob, entropy, kl_divergence, finished=False
+        self,
+        advantage: float,
+        log_prob: float,
+        entropy: float,
+        kl_divergence: float,
+        finished: bool = False,
     ) -> None:
         """
         Update the policy's parameters according to the n-step A2C updates rules. see : https://medium.com/deeplearningmadeeasy/advantage-actor-critic-a2c-implementation-944e98616b
@@ -363,7 +390,6 @@ class TorchA2C(BaseTorchAgent):
         torch.autograd.set_detect_anomaly(True)
         self.index += 1
         if self.config["NETWORKS"].getboolean("normalize_advantages"):
-            print("wut")
             advantages = torch.div(
                 torch.sub(advantages, advantages.mean()),
                 torch.add(advantages.std(), 1e-8),
@@ -380,16 +406,16 @@ class TorchA2C(BaseTorchAgent):
             # + self.config["AGENT"].getfloat("KL_factor") * kl_loss
         )
         self.actor_optimizer.zero_grad()
-        actor_loss.backward(retain_graph=True)
+        actor_loss.backward(retain_graph=False)
         self.gradient_clipping()  #
-        if finished:
-            self.actor_optimizer.step()
+        # if finished:
+        self.actor_optimizer.step()
 
         self.critic_optimizer.zero_grad()
-        critic_loss.backward(retain_graph=True)
-        # self.gradient_clipping()
-        if finished:
-            self.critic_optimizer.step()
+        critic_loss.backward(retain_graph=False)
+        self.gradient_clipping()
+        # if finished:
+        self.critic_optimizer.step()
 
         # KPIs
         # explained_variance = self.compute_explained_variance(
@@ -429,7 +455,7 @@ class TorchA2C(BaseTorchAgent):
                 commit=False,
             )
 
-    def get_action_probabilities(self, state: np.array) -> np.array:
+    def get_action_probabilities(self, state: np.ndarray) -> np.ndarray:
         """
         Computes the policy pi(s, theta) for the given state s and for the current policy parameters theta.
         Same as forward method with a clearer name for teaching purposes, but as forward is a native method that needs to exist we keep both.
@@ -444,7 +470,7 @@ class TorchA2C(BaseTorchAgent):
         return self.actor(t(state)).detach().cpu().numpy()
 
     def get_value(
-        self, state: np.array, hidden: Dict[int, torch.Tensor]
+        self, state: np.ndarray, hidden: Dict[int, torch.Tensor]
     ) -> Tuple[torch.Tensor, Dict[int, torch.Tensor]]:
         """
         Computes the state value for the given state s and for the current policy parameters theta.
@@ -460,7 +486,7 @@ class TorchA2C(BaseTorchAgent):
         value, new_hidden = self.critic(t(state), hidden)
         return value, new_hidden
 
-    def save(self, name: str = "model"):
+    def save(self, name: str = "model") -> None:
         """
         Save the current model
 
@@ -472,7 +498,7 @@ class TorchA2C(BaseTorchAgent):
             self.critic, f'{self.config["PATHS"]["model_path"]}/{name}_critic.pth'
         )
 
-    def load(self, name: str = "model"):
+    def load(self, name: str = "model") -> None:
         """
         Load the designated model
 
@@ -481,18 +507,18 @@ class TorchA2C(BaseTorchAgent):
         """
         print("Loading")
         self.actor = torch.load(
-            f'{self.config["PATHS"]["model_path"]}/actor_{name}.pth'
+            f'{self.config["PATHS"]["model_path"]}/{name}_actor.pth'
         )
         self.critic = torch.load(
-            f'{self.config["PATHS"]["model_path"]}/critic_{name}.pth'
+            f'{self.config["PATHS"]["model_path"]}/{name}_critic.pth'
         )
 
-    def fit_transform(self, input):
+    def fit_transform(self, input) -> torch.Tensor:
         self.scaler.partial_fit(input)
         if self.index > 2:
             return t(self.scaler.transform(input))
 
-    def gradient_clipping(self):
+    def gradient_clipping(self) -> None:
         clip_value = self.config["AGENT"].getfloat("gradient_clipping")
         if clip_value is not None:
             for optimizer in [self.actor_optimizer, self.critic_optimizer]:

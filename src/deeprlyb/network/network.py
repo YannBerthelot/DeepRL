@@ -9,8 +9,6 @@ import torch.nn as nn
 # Network creator tool
 from deeprlyb.network.utils import get_network_from_architecture, get_device
 
-# Numpy
-import numpy as np
 
 ZERO = 1e-7
 
@@ -72,6 +70,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         self._architecture = architecture[1:-1].split(",")
         self.actor = actor
         self.network = self.init_layers()
+        print("actor", actor, self.network)
 
     @property
     def architecture(self):
@@ -111,7 +110,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
             output_size,
             self.architecture,
             activation_function="relu",
-            mode="actor",
+            mode="actor" if self.actor else "critic",
         )
 
     def forward(
@@ -134,6 +133,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         for i, layer in enumerate(self.network):
             if isinstance(layer, torch.nn.modules.rnn.LSTM):
                 input = input.view(-1, 1, layer.input_size)
+                hiddens[i] = (hiddens[i][0].detach(), hiddens[i][1].detach())
                 input, hiddens[i] = layer(input, hiddens[i])
             else:
                 input = layer(input)

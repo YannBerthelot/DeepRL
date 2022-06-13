@@ -1,13 +1,11 @@
 import unittest
 import numpy as np
 from deeprlyb.utils.buffer import RolloutBuffer
-from deeprlyb.network.utils import t
-import timeit
 import numpy as np
 
 
 class TestSimpleStandardizer(unittest.TestCase):
-    def test_init(self):
+    def test_init(self) -> None:
         with self.assertRaises(ValueError):
             RolloutBuffer(buffer_size=-1, gamma=0.99, n_steps=10)
         with self.assertRaises(ValueError):
@@ -15,7 +13,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         with self.assertRaises(ValueError):
             RolloutBuffer(buffer_size=10, gamma=0.99, n_steps=-1)
 
-    def test_add(self):
+    def test_add(self) -> None:
         buffer = RolloutBuffer(buffer_size=5, gamma=0.99, n_steps=5)
         while not buffer.full:
             buffer.add(-1.3, False, 0.3, 0.1, 1e-3, 0.5)
@@ -30,15 +28,15 @@ class TestSimpleStandardizer(unittest.TestCase):
             i += 1
         self.assertEqual(3, buffer.__len__)
 
-    def test_compute_n_step_return(self):
+    def test_compute_n_step_return(self) -> None:
         rewards_list = [1, 2, 3, 4, 5]
         gamma = 0.99
         G = RolloutBuffer.compute_n_step_return(rewards=rewards_list, gamma=gamma)
         self.assertAlmostEqual(
-            G, 1 + 0.99 * 2 + 0.99 ** 2 * 3 + 0.99 ** 3 * 4 + 0.99 ** 4 * 5
+            G, 1 + 0.99 * 2 + 0.99**2 * 3 + 0.99**3 * 4 + 0.99**4 * 5
         )
 
-    def test_compute_advantages(self):
+    def test_compute_advantages(self) -> None:
         buffer = RolloutBuffer(buffer_size=1, gamma=0.99, n_steps=1)
         while not buffer.full:
             buffer.add(np.random.randint(10), False, 1, 0.1, 1e-3, 0.5)
@@ -62,7 +60,7 @@ class TestSimpleStandardizer(unittest.TestCase):
         # advantage_1 = returns[0] + (buffer.gamma ** buffer.n_steps) * v_n - v_0
         # np.testing.assert_array_almost_equal(buffer.advantages, advantage_1)
 
-    def test_clean(self):
+    def test_clean(self) -> None:
         buffer = RolloutBuffer(buffer_size=10, gamma=0.99, n_steps=5)
         vals = range(100)
         i = 0

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 echo "Running pre-commit hook"
-./scripts/run-tests.bash
+./scripts/create_requirements.bash
+./scripts/linting.bash
+#./scripts/run-tests.bash
 
 # $? stores exit value of the last command
 if [ $? -ne 0 ]; then
