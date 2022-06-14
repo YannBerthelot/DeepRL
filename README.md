@@ -11,17 +11,31 @@ You need to have swig installed for it to work.
 Packaging w.i.p.
 
 ```bash
-git clone https://github.com/YannBerthelot/DeepRL.git
-cd DeepRL
+git clone https://github.com/YannBerthelot/deeprlyb.git
+cd deeprlyb
 poetry install
 ```
 
 ## Usage
 
+To run the example
 ```bash
-poetry run python main.py
+poetry run python src/deeprlyb.py -s tests/config.ini
 ```
+otherwise you can import agents and feed them the config like:
+```python
+import gym
+from deeprlyb.agents import A2C
 
+config_file = path/to/config.ini
+config = read_config(config_file)
+
+env = gym.make('CartPole-v1')
+agent = A2C(env, config)
+agent.train_MC(env, nb_timesteps)
+agent.test(env, nb_episodes_test, render=True)
+
+```
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
