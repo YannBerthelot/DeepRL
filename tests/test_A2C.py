@@ -69,8 +69,9 @@ class TestA2C(unittest.TestCase):
         print("Testing TD0")
         agent = A2C(env, config)
         agent.train_TD0(env, 1e3)
-        del agent
         agent.test(env, nb_episodes=10, render=False)
+        del agent
+
         print("Testing MC")
         agent = A2C(env, config)
         agent.train_MC(env, 1e3)
