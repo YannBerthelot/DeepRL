@@ -2,7 +2,7 @@
 
 DeepRL is a Python repository aiming at implementing deepRL agents using PyTorch. It is compatible with Tensorboard and wandb
 Implemented agents are:
---A2C (vanilla and n-steps) including LSTM extension
+--A2C (TD and MC, n-steps is WIP) including LSTM extension
 --REINFORCE
 
 ## Installation
@@ -27,7 +27,7 @@ otherwise you can import agents and feed them the config like:
 import gym
 from deeprlyb.agents import A2C
 
-config_file = path/to/config.ini
+config_file = "path/to/config.ini"
 config = read_config(config_file)
 
 env = gym.make('CartPole-v1')
@@ -49,21 +49,21 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 - [x] Add normalization and standardization of states and rewards
 - [x] Add normalization and standardization of target
 - [x] Add entropy
-- [x] Add policy and target networks
-- [x] Add explained variance
 - [x] Add schedules for parameters (e.g. learning rate)
 - [x] Add LSTM (multi-layers included and batch support included)
 - [x] Add rollout buffer and switch to batch learning
+- [x] Package the code into a Python lib
 
 ### Priority
 
 - [ ] Correct agent testing
-- [ ] Rework continuous actions to handle batch
+- [ ] Add N-steps
 
 ### Optionnal
 
 - [ ] Re-add n-step A2C (that works with batch)
 - [ ] Add testing during training to select agent to save
 - [ ] Rework action selection logging
-- [ ] Add tests (cf : https://andyljones.com/posts/rl-debugging.html)
-- [ ] Package the code into a Python lib
+- [ ] Finish adding tests (cf : https://andyljones.com/posts/rl-debugging.html)
+- [ ] Add explained variance
+
