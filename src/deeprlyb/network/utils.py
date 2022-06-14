@@ -1,7 +1,7 @@
 import re
 import torch
 import torch.nn as nn
-from typing import List
+from typing import List, Union
 import warnings
 
 # helper function to convert numpy arrays to tensors
@@ -9,7 +9,7 @@ def t(x):
     return torch.from_numpy(x).float()
 
 
-def add_final_layer(activation, layers):
+def add_final_layer(activation: Union[nn.ReLU, nn.Sigmoid, nn.Tanh], layers: list):
     if activation == "relu":
         layers.append(nn.ReLU())
     elif activation == "sigmoid":
@@ -44,6 +44,10 @@ def get_network_from_architecture(
         activation = nn.ReLU()
     elif activation_function.lower() == "tanh":
         activation = nn.Tanh()
+    elif (
+        activation_function.lower() == "swish" or activation_function.lower() == "silu"
+    ):
+        activation == nn.SiLU()
     else:
         raise NotImplementedError(
             f"No activation function like {activation_function} implemented"
