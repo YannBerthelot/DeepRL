@@ -28,6 +28,7 @@ mypy = "^0.961"
 protobuf = "3.20"
 
 [tool.poetry.dev-dependencies]
+black = {version = "^22.3.0", allow-prereleases = true}
 
 
 
