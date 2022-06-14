@@ -66,8 +66,14 @@ class TestA2C(unittest.TestCase):
         dir = os.path.dirname(__file__)
         config_file = os.path.join(dir, "config.ini")
         config = read_config(config_file)
+        print("Testing TD0")
         agent = A2C(env, config)
         agent.train_TD0(env, 1e3)
+        del agent
+        agent.test(env, nb_episodes=10, render=False)
+        print("Testing MC")
+        agent = A2C(env, config)
+        agent.train_MC(env, 1e3)
         agent.test(env, nb_episodes=10, render=False)
 
 

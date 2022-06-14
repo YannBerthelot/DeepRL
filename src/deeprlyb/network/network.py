@@ -70,7 +70,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
         self._architecture = architecture[1:-1].split(",")
         self.actor = actor
         self.network = self.init_layers()
-        print("actor", actor, self.network)
+        print("actor" if actor else "critic", self.network)
 
     @property
     def architecture(self):
@@ -139,6 +139,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
                 input = layer(input)
         return input, hiddens
 
+    @staticmethod
     def get_initial_states(hidden_size, num_layers):
         h_0, c_0 = None, None
 

@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 import numpy.typing as npt
 
@@ -42,9 +43,9 @@ class RolloutBuffer:
         self.rewards = np.zeros(buffer_size)
         self.dones = np.zeros(buffer_size)
         self.KL_divergences = np.zeros(buffer_size)
-        self.values = np.zeros(buffer_size)
-        self.log_probs = np.zeros(buffer_size)
-        self.entropies = np.zeros(buffer_size)
+        self.values = torch.zeros(buffer_size)
+        self.log_probs = torch.zeros(buffer_size)
+        self.entropies = torch.zeros(buffer_size)
         self.advantages = None
         self._returns = None
         self.__len__ = 0
@@ -72,6 +73,8 @@ class RolloutBuffer:
         entropy: float,
         KL_divergence: float,
     ) -> None:
+        if self.full:
+            raise ValueError("Buffer is already full, cannot add anymore")
         self.dones[self.__len__] = done
         self.values[self.__len__] = value
         self.log_probs[self.__len__] = log_prob
@@ -87,6 +90,17 @@ class RolloutBuffer:
         for reward in reversed(rewards):
             n_step_return = reward + gamma * n_step_return
         return n_step_return
+
+    @staticmethod
+    def compute_MC_returns(rewards: npt.NDArray[np.float64], gamma: float) -> float:
+        # return reduce(lambda a, b: gamma * a + b, reversed(rewards)) -> less efficient somehow
+        MC_returns = []
+        cum_return = 0
+        for reward in reversed(rewards):
+            cum_return = reward + gamma * cum_return
+            MC_returns.append(cum_return)
+        MC_returns = MC_returns[::-1]
+        return MC_returns
 
     @staticmethod
     def compute_next_return(
@@ -132,7 +146,7 @@ class RolloutBuffer:
     @staticmethod
     def compute_advantages(
         returns: npt.NDArray[np.float64],
-        values: npt.NDArray[np.float64],
+        values: torch.Tensor,
         dones: npt.NDArray[np.float64],
         gamma: float,
         last_val: float,
@@ -152,7 +166,16 @@ class RolloutBuffer:
         else:
             raise ValueError(f"Invalid steps number : {n_steps}")
 
-    def update_advantages(self, last_val: float, fast="True") -> None:
+    @staticmethod
+    def compute_MC_advantages(
+        returns: npt.NDArray[np.float64],
+        values: torch.Tensor,
+    ) -> torch.Tensor:
+        return torch.sub(torch.tensor(returns), values)
+
+    def update_advantages(
+        self, last_val: float = None, fast: bool = True, MC: bool = False
+    ) -> None:
         """Wrapper of static method compute_returns_and_advantages
 
         Args:
@@ -166,7 +189,11 @@ class RolloutBuffer:
                 self.buffer_size,
                 self.n_steps,
             )
-
+        elif MC:
+            self._returns = RolloutBuffer.compute_MC_returns(
+                self.rewards,
+                self.gamma,
+            )
         else:
             # Faster for low number of steps
             self._returns = RolloutBuffer.compute_all_n_step_returns(
@@ -175,10 +202,24 @@ class RolloutBuffer:
                 self.buffer_size,
                 self.n_steps,
             )
-
-        self.advantages = RolloutBuffer.compute_advantages(
-            self._returns, self.values, self.dones, self.gamma, last_val, self.n_steps
-        )
+        if MC:
+            self.advantages = RolloutBuffer.compute_MC_advantages(
+                self._returns,
+                self.values,
+            )
+            self.advantages = self.advantages[: self.__len__]
+            self.log_probs = self.log_probs[: self.__len__]
+            # print("values", self.values[: self.__len__])
+            # print("advantages", self.advantages)
+        else:
+            self.advantages = RolloutBuffer.compute_advantages(
+                self._returns,
+                self.values,
+                self.dones,
+                self.gamma,
+                last_val,
+                self.n_steps,
+            )
 
     def show(self) -> None:
         print("REWARDS", self.rewards)

@@ -115,7 +115,7 @@ class Agent:
         action_frequencies = {
             action: n / n_actions for action, n in actions_taken.items()
         }
-        if self.config["GLOBAL"]["logging"] == "wandb":
+        if self.config["GLOBAL"]["logging"].lower() == "wandb":
             for action, frequency in action_frequencies.items():
                 wandb.log(
                     {
@@ -132,7 +132,7 @@ class Agent:
                 step=self.t,
                 commit=True,
             )
-        elif self.config["GLOBAL"]["logging"] == "tensorboard":
+        elif self.config["GLOBAL"]["logging"].lower() == "tensorboard":
             self.network.writer.add_scalar(
                 "Reward/Episode_sum_of_rewards", reward_sum, self.episode
             )
