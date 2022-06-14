@@ -24,7 +24,12 @@ if __name__ == "__main__":
             run = None
         comment = f"config_{experiment}"
         agent = A2C(env, config=config, comment=comment, run=run)
-        agent.train_TD0(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
+        if config["AGENT"]["mode"] == "MC":
+            agent.train_MC(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
+        elif config["AGENT"]["mode"] == "TD0":
+            agent.train_TD0(env, config["GLOBAL"].getfloat("nb_timesteps_train"))
+        else:
+            raise ValueError(f'Agent mode {config["AGENT"]["mode"]} not recognized.')
         agent.load(f"{comment}_best")
         agent.test(
             env,

@@ -46,6 +46,12 @@ class TestSimpleStandardizer(unittest.TestCase):
         safe_returns = buffer._returns
         np.testing.assert_array_almost_equal(returns, safe_returns)
 
+        buffer = RolloutBuffer(buffer_size=10, gamma=0.99, n_steps=1)
+        while not buffer.full:
+            buffer.add(np.random.randint(10), False, 1, 0.1, 1e-3, 0.5)
+        buffer.update_advantages(last_val=1, fast=False, MC=True)
+        print(buffer._returns)
+        print(buffer.advantages)
         # buffer = RolloutBuffer(buffer_size=2, gamma=0.99, n_steps=2)
         # while not buffer.full:
         #     buffer.add(1, False, 1, 0.1, 1e-3, 0.5)
