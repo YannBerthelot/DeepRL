@@ -63,12 +63,14 @@ class ActorCriticRecurrentNetworks(nn.Module):
         action_dim,
         architecture,
         actor=True,
+        activation="relu",
     ):
         super(ActorCriticRecurrentNetworks, self).__init__()
         self._action_dim = action_dim
         self._state_dim = state_dim
         self._architecture = architecture[1:-1].split(",")
         self.actor = actor
+        self.activation = activation
         self.network = self.init_layers()
         print("actor" if actor else "critic", self.network)
 
@@ -109,7 +111,7 @@ class ActorCriticRecurrentNetworks(nn.Module):
             self.state_dim,
             output_size,
             self.architecture,
-            activation_function="relu",
+            activation_function=self.activation,
             mode="actor" if self.actor else "critic",
         )
 

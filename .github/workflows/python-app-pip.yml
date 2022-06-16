@@ -48,6 +48,7 @@ jobs:
         poetry version patch
         python -m build
     - name: Publish package to TestPyPI
+      continue-on-error: true
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
