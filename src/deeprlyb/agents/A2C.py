@@ -37,6 +37,7 @@ class A2C(Agent):
 
         # Initialize the policy network with the right shape
         self.network = TorchA2C(self)
+
         self.network.to(self.network.device)
         self.network.writer = SummaryWriter(
             log_dir=self.log_dir + "/" + str(datetime.datetime.now())
@@ -381,6 +382,7 @@ class TorchA2C(BaseTorchAgent):
             agent.action_shape,
             self.config["NETWORKS"]["actor_nn_architecture"],
             actor=True,
+            activation=self.config["NETWORKS"]["actor_activation_function"],
         )
 
         self.critic = ActorCriticRecurrentNetworks(
@@ -388,6 +390,7 @@ class TorchA2C(BaseTorchAgent):
             1,
             self.config["NETWORKS"]["critic_nn_architecture"],
             actor=False,
+            activation=self.config["NETWORKS"]["critic_activation_function"],
         )
 
         # Optimize to use for weight update (SGD seems to work poorly, switching to RMSProp) given our learning rate
