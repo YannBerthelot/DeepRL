@@ -1,4 +1,5 @@
 import re
+import numpy as np
 import torch
 import torch.nn as nn
 from typing import List, Union
@@ -19,6 +20,12 @@ def add_final_layer(activation: Union[nn.ReLU, nn.Sigmoid, nn.Tanh], layers: lis
     else:
         raise ValueError(f"Unrecognized activation function {activation}")
     return layers
+
+
+def init_weights(m, val=np.sqrt(2)):
+    if isinstance(m, nn.Linear):
+        torch.nn.init.orthogonal_(m.weight, gain=val)
+        m.bias.data.fill_(0)
 
 
 def get_network_from_architecture(
@@ -44,10 +51,8 @@ def get_network_from_architecture(
         activation = nn.ReLU()
     elif activation_function.lower() == "tanh":
         activation = nn.Tanh()
-    elif (
-        activation_function.lower() == "swish" or activation_function.lower() == "silu"
-    ):
-        activation == nn.SiLU()
+    elif activation_function.lower() in ("swish", "silu"):
+        activation = nn.SiLU()
     else:
         raise NotImplementedError(
             f"No activation function like {activation_function} implemented"
@@ -117,7 +122,13 @@ def get_network_from_architecture(
         layers.append(nn.Linear(_input_shape, _output_shape))
         if mode == "actor":
             layers.append(nn.Softmax(dim=-1))
+
         network = nn.Sequential(*layers)
+        network.apply(init_weights)
+        if mode == "actor":
+            layers[-2].apply(lambda module: init_weights(m=module, val=(0.01)))
+        else:
+            layers[-1].apply(lambda module: init_weights(m=module, val=(1)))
         return network
 
 
