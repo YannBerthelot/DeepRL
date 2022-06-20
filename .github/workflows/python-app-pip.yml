@@ -42,12 +42,11 @@ jobs:
         python -m unittest tests/*.py
     - name: Build
       run: |
-        if [ ${{ github.ref }} = refs/heads/main ]; then
-          pip install build
-          pip install -U setuptools
-          pip install poetry
-          poetry version patch
-          python -m build
+        pip install build
+        pip install -U setuptools
+        pip install poetry
+        poetry version patch
+        python -m build
     - name: Publish package to TestPyPI
       continue-on-error: true
       uses: pypa/gh-action-pypi-publish@release/v1
