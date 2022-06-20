@@ -45,6 +45,9 @@ class A2C(Agent):
         self.network.writer = SummaryWriter(
             log_dir=self.log_dir + "/" + str(datetime.datetime.now())
         )
+        self.actor_hidden = self.network.actor.initialize_hidden_states()
+        self.critic_hidden = self.network.critic.initialize_hidden_states()
+        self.t = 1
 
     def select_action(
         self,
@@ -78,9 +81,8 @@ class A2C(Agent):
 
     def pre_train(self, env: gym.Env, nb_timestep: int, scaling=False) -> None:
         # Init training
-        self.t, t_old, self.constant_reward_counter = 1, 0, 0
-        actor_hidden = self.network.actor.initialize_hidden_states()
-        critic_hidden = self.network.critic.initialize_hidden_states()
+        t_old, self.constant_reward_counter = 0, 0
+        actor_hidden, critic_hidden = self.actor_hidden, self.critic_hidden
         # Pre-Training
         if nb_timestep > 0:
             print("--- Pre-Training ---")
@@ -120,9 +122,10 @@ class A2C(Agent):
             pickle.dump(reward_scaler, output_file)
 
     def train_MC(self, env: gym.Env, nb_timestep: int) -> None:
-        actor_hidden, critic_hidden = self.pre_train(
-            env, self.config["GLOBAL"].getfloat("learning_start")
-        )
+        # actor_hidden, critic_hidden = self.pre_train(
+        #     env, self.config["GLOBAL"].getfloat("learning_start")
+        # )
+        actor_hidden, critic_hidden = self.actor_hidden, self.critic_hidden
         self.rollout = RolloutBuffer(
             buffer_size=self.env._max_episode_steps,
             gamma=self.config["AGENT"].getfloat("gamma"),
@@ -192,9 +195,10 @@ class A2C(Agent):
         self.train_logging(artifact)
 
     def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
-        actor_hidden, critic_hidden = self.pre_train(
-            env, self.config["GLOBAL"].getfloat("learning_start")
-        )
+        # actor_hidden, critic_hidden = self.pre_train(
+        #     env, self.config["GLOBAL"].getfloat("learning_start")
+        # )
+        actor_hidden, critic_hidden = self.actor_hidden, self.critic_hidden
         self.constant_reward_counter, self.old_reward_sum = 0, 0
         print("--- Training ---")
         t_old = 0
