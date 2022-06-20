@@ -141,13 +141,12 @@ class Agent:
         self, obs: np.ndarray, reward: float, fit: bool = True, transform: bool = True
     ) -> Tuple[np.ndarray, float]:
         # Scaling
-        if self.config["GLOBAL"].getboolean("scaling"):
-            if fit:
-                self.obs_scaler.partial_fit(obs)
-                self.reward_scaler.partial_fit(np.array([reward]))
-            if transform:
-                reward = self.reward_scaler.transform(np.array([reward]))[0]
-                obs = self.obs_scaler.transform(obs)
+        if fit:
+            self.obs_scaler.partial_fit(obs)
+            self.reward_scaler.partial_fit(np.array([reward]))
+        if transform:
+            reward = self.reward_scaler.transform(np.array([reward]))[0]
+            obs = self.obs_scaler.transform(obs)
         return obs, reward
 
     def create_dirs(self) -> None:
@@ -156,9 +155,9 @@ class Agent:
         return f'{self.config["PATHS"]["tensorboard_path"]}/{self.config["GLOBAL"]["environment"]}/{today}/{self.comment}'
 
     def get_scalers(
-        self,
+        self, scale=False
     ) -> Tuple[SimpleStandardizer, SimpleStandardizer, SimpleStandardizer]:
-        if self.config["GLOBAL"].getboolean("SCALING"):
+        if scale:
             if self.config["GLOBAL"]["scaling_method"] == "standardize":
                 obs_scaler = SimpleStandardizer(clip=True)
                 reward_scaler = SimpleStandardizer(shift_mean=False, clip=False)

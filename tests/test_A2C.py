@@ -77,6 +77,18 @@ class TestA2C(unittest.TestCase):
         agent.train_MC(env, 1e3)
         agent.test(env, nb_episodes=10, render=False)
 
+    def test_pre_train(self) -> None:
+        env = gym.make("CartPole-v1")
+        dir = os.path.dirname(__file__)
+        config_file = os.path.join(dir, "config.ini")
+        config = read_config(config_file)
+        agent = A2C(env, config)
+        agent.obs_scaler, agent.reward_scaler, _ = agent.get_scalers(True)
+        print("Pre-train")
+        agent.pre_train(env, 1e3, scaling=True)
+        self.assertTrue(os.path.exists("scalers/obs.pkl"))
+        self.assertTrue(os.path.exists("scalers/reward.pkl"))
+
 
 if __name__ == "__main__":
     unittest.main()
