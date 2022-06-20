@@ -1,3 +1,4 @@
+import os
 import pickle
 import warnings
 import datetime
@@ -33,7 +34,9 @@ class A2C(Agent):
             n_steps=config["AGENT"].getint("n_steps"),
         )
 
-        self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers()
+        self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers(
+            self.config["GLOBAL"].getboolean("scaling")
+        )
 
         # Initialize the policy network with the right shape
         self.network = TorchA2C(self)
@@ -73,13 +76,13 @@ class A2C(Agent):
         """
         return self.network.get_value(observation, hidden)
 
-    def pre_train(self, env: gym.Env, nb_timestep: int) -> None:
+    def pre_train(self, env: gym.Env, nb_timestep: int, scaling=False) -> None:
         # Init training
         self.t, t_old, self.constant_reward_counter = 1, 0, 0
         actor_hidden = self.network.actor.initialize_hidden_states()
         critic_hidden = self.network.critic.initialize_hidden_states()
         # Pre-Training
-        if self.config["GLOBAL"].getfloat("learning_start") > 0:
+        if nb_timestep > 0:
             print("--- Pre-Training ---")
             t_pre_train = 1
             pbar = tqdm(total=nb_timestep, initial=1)
@@ -94,16 +97,27 @@ class A2C(Agent):
                     value, critic_hidden = self.network.get_value(obs, critic_hidden)
                     action = self.env.action_space.sample()
                     next_obs, reward, done, _ = env.step(action)
-                    next_obs, reward = self.scaling(
-                        next_obs, reward, fit=True, transform=False
-                    )
+                    if scaling:
+                        next_obs, reward = self.scaling(
+                            next_obs, reward, fit=True, transform=False
+                        )
                     t_pre_train += 1
             pbar.close()
             print(
                 f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
             )
             print(f"Reward scaler - std : {self.reward_scaler.std}")
+            self.save_scalers(self.obs_scaler, self.reward_scaler)
         return actor_hidden, critic_hidden
+
+    @staticmethod
+    def save_scalers(obs_scaler, reward_scaler):
+        print("Saving scalers")
+        os.makedirs("scalers", exist_ok=True)
+        with open("scalers/obs.pkl", "wb") as output_file:
+            pickle.dump(obs_scaler, output_file)
+        with open("scalers/reward.pkl", "wb") as output_file:
+            pickle.dump(reward_scaler, output_file)
 
     def train_MC(self, env: gym.Env, nb_timestep: int) -> None:
         actor_hidden, critic_hidden = self.pre_train(
@@ -142,9 +156,10 @@ class A2C(Agent):
                 self.rollout.add(reward, done, value, log_prob, entropy, KL_divergence)
 
                 self.t, t_episode = self.t + 1, t_episode + 1
-                next_obs, reward = self.scaling(
-                    next_obs, reward, fit=False, transform=True
-                )
+                if self.config["GLOBAL"].getboolean("scaling"):
+                    next_obs, reward = self.scaling(
+                        next_obs, reward, fit=False, transform=True
+                    )
                 obs = next_obs
                 critic_hidden, actor_hidden = next_critic_hidden, next_actor_hidden
 
@@ -202,9 +217,10 @@ class A2C(Agent):
                 value, critic_hidden = self.network.get_value(obs, critic_hidden)
                 next_obs, reward, done, _ = env.step(action)
                 reward_sum += reward
-                next_obs, reward = self.scaling(
-                    next_obs, reward, fit=False, transform=True
-                )
+                if self.config["GLOBAL"].getboolean("scaling"):
+                    next_obs, reward = self.scaling(
+                        next_obs, reward, fit=False, transform=True
+                    )
                 next_critic_hidden = critic_hidden.copy()
                 next_value, next_next_critic_hidden = self.network.get_value(
                     next_obs, critic_hidden
