@@ -5,53 +5,52 @@ name: Python application
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.8.1
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.8.1"
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install -e .
-    - name: Linting
-      continue-on-error: true
-      run: |
-        pip install "black<23" pylint==v3.0.0a3 mypy==v0.902
-        black --diff --check $(git ls-files '*.py')
-        pylint --disable=all --enable=unused-import $(git ls-files '*.py')
-        mypy --strict $(git ls-files '*.py')
-    - name: Test with pytest
-      run: |
-        python -m unittest tests/*.py
-    - name: Build
-      run: |
-        pip install build
-        pip install -U setuptools
-        pip install poetry
-        poetry version patch
-        python -m build
-    - name: Publish package to TestPyPI
-      continue-on-error: true
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        repository_url: https://test.pypi.org/legacy/
-        verify_metadata: false
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.8.1
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.8.1"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -e .
+      - name: Linting
+        continue-on-error: true
+        run: |
+          pip install "black<23" pylint==v3.0.0a3 mypy==v0.902
+          black --diff --check $(git ls-files '*.py')
+          pylint --disable=all --enable=unused-import $(git ls-files '*.py')
+          mypy --strict $(git ls-files '*.py')
+      - name: Test with pytest
+        run: |
+          python -m unittest tests/*.py
+      - name: Build
+        run: |
+          pip install build
+          pip install -U setuptools
+          pip install poetry
+          poetry version patch
+          python -m build
+      - name: Publish package to TestPyPI
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+          verify_metadata: false

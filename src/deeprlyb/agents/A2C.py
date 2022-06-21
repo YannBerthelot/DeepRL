@@ -47,7 +47,7 @@ class A2C(Agent):
         )
         self.actor_hidden = self.network.actor.initialize_hidden_states()
         self.critic_hidden = self.network.critic.initialize_hidden_states()
-        self.t = 1
+        self.t, self.t_global = 1, 1
 
     def select_action(
         self,
@@ -109,17 +109,18 @@ class A2C(Agent):
                 f"Obs scaler - Mean : {self.obs_scaler.mean}, std : {self.obs_scaler.std}"
             )
             print(f"Reward scaler - std : {self.reward_scaler.std}")
-            self.save_scalers(self.obs_scaler, self.reward_scaler)
+            self.obs_scaler.save(path="scalers", name="obs")
+            self.save_scalers("scalers", "scaler")
         return actor_hidden, critic_hidden
 
-    @staticmethod
-    def save_scalers(obs_scaler, reward_scaler):
-        print("Saving scalers")
-        os.makedirs("scalers", exist_ok=True)
-        with open("scalers/obs.pkl", "wb") as output_file:
-            pickle.dump(obs_scaler, output_file)
-        with open("scalers/reward.pkl", "wb") as output_file:
-            pickle.dump(reward_scaler, output_file)
+    def save_scalers(self, path, name) -> None:
+        self.obs_scaler.save(path=path, name="obs_" + name)
+        self.reward_scaler.save(path=path, name="reward_" + name)
+
+    def load_scalers(self, path: str, name: str) -> None:
+        self.obs_scaler, self.reward_scaler, self.target_scaler = self.get_scalers(True)
+        self.obs_scaler.load(path, "obs_" + name)
+        self.reward_scaler.load(path, "reward_" + name)
 
     def train_MC(self, env: gym.Env, nb_timestep: int) -> None:
         # actor_hidden, critic_hidden = self.pre_train(
@@ -131,12 +132,12 @@ class A2C(Agent):
             gamma=self.config["AGENT"].getfloat("gamma"),
             n_steps=1,
         )
-        self.constant_reward_counter, self.old_reward_sum = 0, 0
+        self.t, self.constant_reward_counter, self.old_reward_sum = 1, 0, 0
         print("--- Training ---")
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
 
-        while self.t <= nb_timestep:
+        while self.t_global <= nb_timestep:
             # tqdm stuff
             pbar.update(self.t - t_old)
             t_old, t_episode = self.t, 1
@@ -158,7 +159,11 @@ class A2C(Agent):
                 log_prob, entropy, KL_divergence = loss_params
                 self.rollout.add(reward, done, value, log_prob, entropy, KL_divergence)
 
-                self.t, t_episode = self.t + 1, t_episode + 1
+                self.t_global, self.t, t_episode = (
+                    self.t_global + 1,
+                    self.t + 1,
+                    t_episode + 1,
+                )
                 if self.config["GLOBAL"].getboolean("scaling"):
                     next_obs, reward = self.scaling(
                         next_obs, reward, fit=False, transform=True

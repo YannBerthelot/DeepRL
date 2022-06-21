@@ -121,7 +121,7 @@ class Agent:
                     {
                         f"Actions/{action}": frequency,
                     },
-                    step=self.t,
+                    step=self.t_global,
                     commit=False,
                 )
             wandb.log(
@@ -129,7 +129,7 @@ class Agent:
                     "Train/Episode_sum_of_rewards": reward_sum,
                     "Train/Episode": self.episode,
                 },
-                step=self.t,
+                step=self.t_global,
                 commit=True,
             )
         elif self.config["GLOBAL"]["logging"].lower() == "tensorboard":
