@@ -86,8 +86,15 @@ class TestA2C(unittest.TestCase):
         agent.obs_scaler, agent.reward_scaler, _ = agent.get_scalers(True)
         print("Pre-train")
         agent.pre_train(env, 1e3, scaling=True)
+        # Check saving
         self.assertTrue(os.path.exists("scalers/obs.pkl"))
         self.assertTrue(os.path.exists("scalers/reward.pkl"))
+        for i in range(3):
+            agent.train_TD0(env, (i + 1) * 1e3)
+        # Check loading
+        del agent
+        agent = A2C(env, config)
+        agent.load_scalers("scalers", "scaler")
         for i in range(3):
             agent.train_TD0(env, (i + 1) * 1e3)
 
