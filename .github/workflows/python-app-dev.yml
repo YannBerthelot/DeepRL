@@ -5,9 +5,9 @@ name: Python application
 
 on:
   push:
-    branches: ["main"]
+    branches: ["dev"]
   pull_request:
-    branches: ["main"]
+    branches: ["dev"]
 
 permissions:
   contents: read
@@ -39,18 +39,3 @@ jobs:
       - name: Test with pytest
         run: |
           python -m unittest tests/*.py
-      - name: Build
-        run: |
-          pip install build
-          pip install -U setuptools
-          pip install poetry
-          poetry version patch
-          python -m build
-      - name: Publish package to TestPyPI
-        continue-on-error: true
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
-          verify_metadata: false
