@@ -1,5 +1,6 @@
 import os
 import gym
+import shutil
 import unittest
 from deeprlyb.agents.A2C import A2C
 from deeprlyb.utils.config import read_config
@@ -80,6 +81,8 @@ class TestA2C(unittest.TestCase):
     def test_pre_train(self) -> None:
         env = gym.make("CartPole-v1")
         dir = os.path.dirname(__file__)
+        if os.path.exists("scalers"):
+            shutil.rmtree("scalers")
         config_file = os.path.join(dir, "config.ini")
         config = read_config(config_file)
         agent = A2C(env, config)
@@ -87,8 +90,8 @@ class TestA2C(unittest.TestCase):
         print("Pre-train")
         agent.pre_train(env, 1e3, scaling=True)
         # Check saving
-        self.assertTrue(os.path.exists("scalers/obs.pkl"))
-        self.assertTrue(os.path.exists("scalers/reward.pkl"))
+        self.assertTrue(os.path.exists("scalers/obs_scaler.pkl"))
+        self.assertTrue(os.path.exists("scalers/reward_scaler.pkl"))
         for i in range(3):
             agent.train_TD0(env, (i + 1) * 1e3)
         # Check loading

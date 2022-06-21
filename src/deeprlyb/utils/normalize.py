@@ -123,6 +123,7 @@ class SimpleStandardizer:
     def save(
         self, path: Union[str, pathlib.Path] = ".", name: str = "standardizer"
     ) -> None:
+        os.makedirs(path, exist_ok=True)
         with open(os.path.join(path, name + ".pkl"), "wb") as file:
             pickle.dump(self, file)
 
