@@ -48,6 +48,7 @@ class A2C(Agent):
         self.actor_hidden = self.network.actor.initialize_hidden_states()
         self.critic_hidden = self.network.critic.initialize_hidden_states()
         self.t, self.t_global = 1, 1
+        self.artifact = None
 
     def select_action(
         self,
@@ -148,13 +149,14 @@ class A2C(Agent):
 
             reward_sum = 0
             while not done:
+                (action, next_actor_hidden, loss_params) = self.select_action(
+                    obs, actor_hidden
+                )
                 (
-                    action,
-                    next_actor_hidden,
                     log_prob,
                     entropy,
                     KL_divergence,
-                ) = self.select_action(obs, actor_hidden)
+                ) = loss_params
                 value, next_critic_hidden = self.network.get_value(obs, critic_hidden)
                 next_obs, reward, done, _ = env.step(action)
                 reward_sum += reward
@@ -253,9 +255,7 @@ class A2C(Agent):
                 )
                 critic_hidden, actor_hidden = next_next_critic_hidden, next_actor_hidden
 
-            artifact = self.save_if_best(reward_sum)
-            if artifact is not None:
-                self.artifact = artifact
+            self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
                 break
 
