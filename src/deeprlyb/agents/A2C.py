@@ -148,15 +148,18 @@ class A2C(Agent):
 
             reward_sum = 0
             while not done:
-                action, next_actor_hidden, loss_params = self.select_action(
-                    obs, actor_hidden
-                )
+                (
+                    action,
+                    next_actor_hidden,
+                    log_prob,
+                    entropy,
+                    KL_divergence,
+                ) = self.select_action(obs, actor_hidden)
                 value, next_critic_hidden = self.network.get_value(obs, critic_hidden)
                 next_obs, reward, done, _ = env.step(action)
                 reward_sum += reward
 
                 actions_taken[int(action)] += 1
-                log_prob, entropy, KL_divergence = loss_params
                 self.rollout.add(reward, done, value, log_prob, entropy, KL_divergence)
 
                 self.t_global, self.t, t_episode = (
@@ -251,6 +254,8 @@ class A2C(Agent):
                 critic_hidden, actor_hidden = next_next_critic_hidden, next_actor_hidden
 
             artifact = self.save_if_best(reward_sum)
+            if artifact is not None:
+                self.artifact = artifact
             if self.early_stopping(reward_sum):
                 break
 
@@ -258,7 +263,7 @@ class A2C(Agent):
             self.episode_logging(reward_sum, actions_taken)
 
         pbar.close()
-        self.train_logging(artifact)
+        self.train_logging(self.artifact)
 
     def test(
         self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None
