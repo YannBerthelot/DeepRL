@@ -48,6 +48,7 @@ class A2C(Agent):
         self.actor_hidden = self.network.actor.initialize_hidden_states()
         self.critic_hidden = self.network.critic.initialize_hidden_states()
         self.t, self.t_global = 1, 1
+        self.artifact = None
 
     def select_action(
         self,
@@ -136,7 +137,7 @@ class A2C(Agent):
         print("--- Training ---")
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
-
+        scaling = self.config["GLOBAL"].getboolean("scaling")
         while self.t_global <= nb_timestep:
             # tqdm stuff
             pbar.update(self.t - t_old)
@@ -148,15 +149,19 @@ class A2C(Agent):
 
             reward_sum = 0
             while not done:
-                action, next_actor_hidden, loss_params = self.select_action(
+                (action, next_actor_hidden, loss_params) = self.select_action(
                     obs, actor_hidden
                 )
+                (
+                    log_prob,
+                    entropy,
+                    KL_divergence,
+                ) = loss_params
                 value, next_critic_hidden = self.network.get_value(obs, critic_hidden)
                 next_obs, reward, done, _ = env.step(action)
                 reward_sum += reward
 
                 actions_taken[int(action)] += 1
-                log_prob, entropy, KL_divergence = loss_params
                 self.rollout.add(reward, done, value, log_prob, entropy, KL_divergence)
 
                 self.t_global, self.t, t_episode = (
@@ -164,7 +169,7 @@ class A2C(Agent):
                     self.t + 1,
                     t_episode + 1,
                 )
-                if self.config["GLOBAL"].getboolean("scaling"):
+                if scaling:
                     next_obs, reward = self.scaling(
                         next_obs, reward, fit=False, transform=True
                     )
@@ -239,14 +244,18 @@ class A2C(Agent):
                 actions_taken[int(action)] += 1
 
                 self.network.update_policy(advantage, *loss_params, finished=True)
-                self.t, t_episode = self.t + 1, t_episode + 1
+                self.t_global, self.t, t_episode = (
+                    self.t_global + 1,
+                    self.t + 1,
+                    t_episode + 1,
+                )
                 obs = next_obs
                 next_value, next_next_critic_hidden = self.network.get_value(
                     next_obs, next_critic_hidden
                 )
                 critic_hidden, actor_hidden = next_next_critic_hidden, next_actor_hidden
 
-            artifact = self.save_if_best(reward_sum)
+            self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
                 break
 
@@ -254,67 +263,7 @@ class A2C(Agent):
             self.episode_logging(reward_sum, actions_taken)
 
         pbar.close()
-        self.train_logging(artifact)
-
-    def train(self, env: gym.Env, nb_timestep: int) -> None:
-        """
-        Train the agent : Collect rollouts and update the policy network.
-
-
-        Args:
-            env (gym.Env): The Gym environment to train on
-            nb_episodes_per_epoch (int): Number of episodes per epoch. How much episode to run before updating the policy
-            nb_epoch (int): Number of epochs to train on.
-        """
-        # Early stopping
-        self.constant_reward_counter, self.old_reward_sum = 0, 0
-        self.pre_train(env, self.config["GLOBAL"].getfloat("learning_start"))
-        print("--- Training ---")
-        t_old = 0
-        pbar = tqdm(total=nb_timestep, initial=1)
-
-        while self.t <= nb_timestep:
-            # tqdm stuff
-            pbar.update(self.t - t_old)
-            t_old, t_episode = self.t, 1
-
-            # actual episode
-            actions_taken = {action: 0 for action in range(self.action_shape)}
-            done, obs, rewards = False, env.reset(), []
-            hidden = self.network.get_initial_states()
-            reward_sum = 0
-            while not done:
-                action, next_hidden, loss_params = self.select_action(obs, hidden)
-                actions_taken[int(action)] += 1
-                next_obs, reward, done, _ = env.step(action)
-                reward_sum += reward
-                next_obs, reward = self.scaling(
-                    next_obs, reward, fit=False, transform=True
-                )
-                self.rollout.add(reward[0], done[0], *loss_params)
-                if self.rollout.full:
-                    next_val, next_hidden = self.compute_value(next_obs, hidden)
-                    self.rollout.update_advantages(next_val)
-                    self._learn()
-                    if self.rollout.done:
-                        self.rollout.reset()
-                    else:
-                        self.rollout.clean()
-                self.t, t_episode = self.t + 1, t_episode + 1
-                obs, hidden = next_obs, next_hidden
-                # if done:
-                #     last_val = self.compute_value(next_obs, next_hidden)
-            self.rollout.reset()
-            # Track best model and save it
-            artifact = self.save_if_best(reward_sum)
-            if self.early_stopping(reward_sum):
-                break
-
-            self.old_reward_sum, self.episode = reward_sum, self.episode + 1
-            self.episode_logging(rewards, reward_sum, actions_taken)
-
-        pbar.close()
-        self.train_logging(artifact)
+        self.train_logging(self.artifact)
 
     def test(
         self, env: gym.Env, nb_episodes: int, render: bool = False, scaler_file=None

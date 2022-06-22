@@ -86,15 +86,13 @@ class Agent:
         self.network.load(name)
 
     def save_if_best(self, reward_sum: float) -> wandb.Artifact:
-        artifact = None
         if reward_sum >= self.best_episode_reward:
             self.best_episode_reward = reward_sum
             if self.config["GLOBAL"]["logging"] == "wandb":
                 wandb.run.summary["Train/best reward sum"] = reward_sum
                 artifact = wandb.Artifact(f"{self.comment}_best", type="model")
-
+                self.artifact = artifact
             self.save(f"{self.comment}_best")
-        return artifact
 
     def early_stopping(self, reward_sum: float) -> bool:
         if reward_sum == self.old_reward_sum:
