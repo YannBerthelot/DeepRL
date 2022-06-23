@@ -8,13 +8,18 @@ Implemented agents are:
 ## Installation
 
 You need to have swig installed for it to work.
-Packaging w.i.p.
 
 ```bash
 git clone https://github.com/YannBerthelot/deeprlyb.git
 cd deeprlyb
 poetry install
 ```
+or
+
+```bash
+pip install -i https://test.pypi.org/simple/ deeprlyb
+```
+
 
 ## Usage
 
