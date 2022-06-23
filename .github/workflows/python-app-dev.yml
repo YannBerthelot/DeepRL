@@ -32,7 +32,7 @@ jobs:
       - name: Linting
         continue-on-error: true
         run: |
-          pip install "black<23" pylint==v3.0.0a3 mypy==v0.902 perflint
+          pip install "black<23" pylint mypy perflint
           black --diff --check $(git ls-files '*.py')
           pylint --load-plugins perflint --disable=all --enable=unused-import $(git ls-files '*.py')
           mypy --strict $(git ls-files '*.py')
