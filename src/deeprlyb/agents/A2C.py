@@ -138,7 +138,7 @@ class A2C(Agent):
         t_old = 0
         pbar = tqdm(total=nb_timestep, initial=1)
         scaling = self.config["GLOBAL"].getboolean("scaling")
-        while self.t_global <= nb_timestep:
+        while self.t <= nb_timestep:
             # tqdm stuff
             pbar.update(self.t - t_old)
             t_old, t_episode = self.t, 1
@@ -194,7 +194,7 @@ class A2C(Agent):
             )
             self.network.update_policy(advantages, *loss_params_episode, finished=True)
             self.rollout.reset()
-            artifact = self.save_if_best(reward_sum)
+            self.save_if_best(reward_sum)
             if self.early_stopping(reward_sum):
                 break
 
@@ -202,7 +202,7 @@ class A2C(Agent):
             self.episode_logging(reward_sum, actions_taken)
 
         pbar.close()
-        self.train_logging(artifact)
+        self.train_logging(self.artifact)
 
     def train_TD0(self, env: gym.Env, nb_timestep: int) -> None:
         # actor_hidden, critic_hidden = self.pre_train(
